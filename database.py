@@ -106,6 +106,55 @@ class Database:
             
             return None
     
+    async def get_all_games(self) -> List[Dict]:
+        """Получить все игры"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute('SELECT * FROM games ORDER BY title')
+            rows = await cursor.fetchall()
+            
+            games = []
+            import json
+            for row in rows:
+                game = dict(row)
+                game['genres'] = json.loads(game['genres']) if game['genres'] else []
+                game['screenshots'] = json.loads(game['screenshots']) if game['screenshots'] else []
+                games.append(game)
+            
+            return games
+    
+    async def update_game(self, game_id: int, game_data: Dict) -> bool:
+        """Обновить информацию об игре"""
+        async with self._lock:
+            try:
+                import json
+                async with aiosqlite.connect(self.db_path) as db:
+                    await db.execute('''
+                        UPDATE games 
+                        SET title = ?, description = ?, rating = ?, genres = ?, 
+                            image_url = ?, screenshots = ?, release_date = ?, url = ?,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    ''', (
+                        game_data.get('title', ''),
+                        game_data.get('description', ''),
+                        game_data.get('rating', 'N/A'),
+                        json.dumps(game_data.get('genres', [])),
+                        game_data.get('image_url', ''),
+                        json.dumps(game_data.get('screenshots', [])),
+                        game_data.get('release_date', ''),
+                        game_data.get('url', ''),
+                        game_id
+                    ))
+                    
+                    await db.commit()
+                    logger.info(f"Game updated: {game_data.get('title', 'Unknown')}")
+                    return True
+                    
+            except Exception as e:
+                logger.error(f"Error updating game: {e}")
+                return False
+    
     async def get_games_by_genre(self, genre: str, limit: int = 5, offset: int = 0) -> List[Dict]:
         """Получить игры по жанру"""
         async with aiosqlite.connect(self.db_path) as db:
