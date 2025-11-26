@@ -328,7 +328,7 @@ class GameParser:
             game['rating'] = rating
             
             # Жанры
-            genres = safe_execute(self._extract_genres_from_page, soup, default=[])
+            genres = safe_execute(self._extract_genres_from_page, soup, game_url, default=[])
             game['genres'] = genres
             
             # Изображение
@@ -414,24 +414,169 @@ class GameParser:
         
         return "N/A"
     
-    def _extract_genres_from_page(self, soup) -> List[str]:
-        """Извлечение жанров со страницы"""
-        selectors = [
-            '.genres', '.categories', '.tags', '.game-genres',
-            'span.genre', '.genre-list', 'div[itemprop="genre"]',
-            '.category', '.tags-list'
+    def _extract_genres_from_page(self, soup, game_url: str) -> List[str]:
+        """Точное извлечение жанров из информации об игре"""
+        genres = []
+        
+        # 1. Ищем структурированные данные о жанрах
+        genre_patterns = [
+            # Метаданные и schema.org
+            '[itemprop="genre"]',
+            '.genre',
+            '.genres', 
+            '.game-genre',
+            '.game-genres',
+            '.category',
+            '.categories',
+            '.tag',
+            '.tags',
+            '.game-tag',
+            '.game-tags',
+            
+            # Информационные блоки
+            '.game-info .genre',
+            '.game-info .categories',
+            '.details .genre',
+            '.details .categories',
+            '.specs .genre',
+            '.specs .categories',
+            
+            # Таблицы с информацией
+            'table td:contains("Жанр") + td',
+            'table td:contains("Genre") + td',
+            'tr td:contains("Жанр")',
+            'tr td:contains("Genre")',
+            
+            # Списки характеристик
+            '.info-list .genre',
+            '.info-list .categories',
+            '.characteristics .genre',
+            '.characteristics .categories',
+            
+            # Конкретные селекторы для asst2game.ru
+            '.entry-meta .genre',
+            '.post-meta .genre',
+            '.game-meta .genre',
+            '.meta-info .genre',
         ]
         
-        for selector in selectors:
-            elem = soup.select_one(selector)
-            if elem:
-                genres = extract_genres(elem.get_text())
+        for pattern in genre_patterns:
+            try:
+                elements = soup.select(pattern)
+                for elem in elements:
+                    text = clean_text(elem.get_text())
+                    if text and len(text) > 2:
+                        # Разделяем запятыми, слэшами и другими разделителями
+                        genre_parts = re.split(r'[,;\/\|&]', text)
+                        for part in genre_parts:
+                            genre = clean_text(part)
+                            if genre and len(genre) > 2 and len(genre) < 30:
+                                # Очищаем от лишних слов
+                                genre = self._clean_genre_name(genre)
+                                if genre and genre not in genres:
+                                    genres.append(genre)
+                
                 if genres:
-                    return genres
+                    logger.debug(f"Found genres with pattern '{pattern}': {genres}")
+                    break
+                    
+            except Exception as e:
+                logger.debug(f"Error with pattern '{pattern}': {e}")
+                continue
         
-        # Если не нашли в специальных блоках, ищем в тексте
-        page_text = soup.get_text()
-        return extract_genres(page_text)
+        # 2. Если не нашли, ищем по текстовым меткам
+        if not genres:
+            text_patterns = [
+                r'Жанр[:\s]+([^\n\r,;]+)',
+                r'Genre[:\s]+([^\n\r,;]+)',
+                r'Категория[:\s]+([^\n\r,;]+)',
+                r'Category[:\s]+([^\n\r,;]+)',
+                r'Тип[:\s]+([^\n\r,;]+)',
+                r'Type[:\s]+([^\n\r,;]+)',
+            ]
+            
+            page_text = soup.get_text()
+            for pattern in text_patterns:
+                matches = re.findall(pattern, page_text, re.IGNORECASE)
+                for match in matches:
+                    genre = clean_text(match)
+                    if genre and len(genre) > 2:
+                        genre = self._clean_genre_name(genre)
+                        if genre and genre not in genres:
+                            genres.append(genre)
+                
+                if genres:
+                    break
+        
+        # 3. Анализ URL для подсказок (если в URL есть жанр)
+        if not genres:
+            url_genre = self._extract_genre_from_url(game_url)
+            if url_genre:
+                genres.append(url_genre)
+        
+        # 4. Ищем в заголовках и описаниях специфичные слова
+        if not genres:
+            title_elem = soup.find('h1') or soup.find('title')
+            if title_elem:
+                title_text = clean_text(title_elem.get_text()).lower()
+                
+                # Специфичные слова для визуальных новелл
+                if any(word in title_text for word in ['visual novel', 'новелла', 'novel']):
+                    genres.append('Визуальная новелла')
+                elif any(word in title_text for word in ['adventure', 'приключение']):
+                    genres.append('Приключение')
+                elif any(word in title_text for word in ['rpg', 'role-playing']):
+                    genres.append('RPG')
+        
+        return genres[:5]  # Ограничиваем количество жанров
+    
+    def _clean_genre_name(self, genre: str) -> str:
+        """Очищает название жанра от лишних слов"""
+        if not genre:
+            return ""
+        
+        genre_lower = genre.lower()
+        
+        # Убираем лишние слова
+        exclude_words = [
+            'игра', 'game', 'для', 'for', 'на', 'on', 'switch',
+            'nintendo', 'консоль', 'console', 'платформа', 'platform'
+        ]
+        
+        for word in exclude_words:
+            genre_lower = genre_lower.replace(word, '').strip()
+        
+        # Возвращаем с правильной капитализацией
+        if genre_lower:
+            return genre_lower.title()
+        
+        return ""
+    
+    def _extract_genre_from_url(self, url: str) -> str:
+        """Извлекает жанр из URL"""
+        url_lower = url.lower()
+        
+        genre_keywords = {
+            'action': 'Action',
+            'adventure': 'Adventure', 
+            'rpg': 'RPG',
+            'role': 'RPG',
+            'strategy': 'Strategy',
+            'puzzle': 'Puzzle',
+            'racing': 'Racing',
+            'sports': 'Sports',
+            'fighting': 'Fighting',
+            'shooter': 'Shooter',
+            'horror': 'Horror',
+            'simulation': 'Simulation',
+            'platformer': 'Platformer',
+        }
+        
+        for keyword, genre in genre_keywords.items():
+            if keyword in url_lower:
+                return genre
+        
+        return ""
     
     def _extract_image(self, soup, base_url: str) -> str:
         """Извлечение главного изображения"""
