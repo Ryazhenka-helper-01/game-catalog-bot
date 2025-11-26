@@ -380,9 +380,10 @@ class GameTrackerBot:
         # Запуск бота
         application.run_polling()
 
-async def main():
+if __name__ == '__main__':
     # Запуск для Railway
     import os
+    import asyncio
     
     # Инициализация базы данных
     bot = GameTrackerBot()
@@ -392,22 +393,23 @@ async def main():
         print("Bot token not found. Exiting...")
         exit(1)
     
-    await bot.db.init_db()
+    # Инициализация базы данных
+    asyncio.get_event_loop().run_until_complete(bot.db.init_db())
     
     # Автоматический парсинг игр при первом запуске
     print("Starting initial game parsing...")
     try:
         # Сначала проверим, есть ли игры в базе
-        existing_games = await bot.db.get_all_games()
+        existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
         if len(existing_games) == 0:
             # Если база пуста, парсим все игры с деталями
-            games = await bot.parser.get_all_games()
+            games = asyncio.get_event_loop().run_until_complete(bot.parser.get_all_games())
             if games:
                 print(f"Found {len(games)} games from asst2game.ru")
                 added_count = 0
                 for game in games:
-                    success = await bot.db.add_game(game)
+                    success = asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
                     if success:
                         added_count += 1
                 print(f"Successfully added {added_count} games to database")
@@ -415,18 +417,19 @@ async def main():
             # Если игры уже есть, обновляем их с деталями
             print(f"Updating {len(existing_games)} existing games with details...")
             updated_count = 0
+            
             for game in existing_games:
                 try:
                     if game.get('url') and game['url'] != bot.parser.base_url:
-                        detailed_game = await bot.parser.parse_game_details(game['url'])
+                        detailed_game = asyncio.get_event_loop().run_until_complete(bot.parser.parse_game_details(game['url']))
                         if detailed_game:
-                            await bot.db.update_game(game['id'], detailed_game)
+                            asyncio.get_event_loop().run_until_complete(bot.db.update_game(game['id'], detailed_game))
                             updated_count += 1
                             print(f"Updated game: {game['title']}")
                     
                     # Небольшая задержка
                     if updated_count < len(existing_games) - 1:
-                        await asyncio.sleep(0.5)
+                        asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.5))
                         
                 except Exception as e:
                     print(f"Error updating game {game.get('title', 'Unknown')}: {e}")
@@ -435,16 +438,14 @@ async def main():
             print(f"Successfully updated {updated_count} games with details")
         
         # Показываем статистику
-        all_games = await bot.db.get_all_games()
-        genres = await bot.db.get_all_genres()
+        all_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
+        genres = asyncio.get_event_loop().run_until_complete(bot.db.get_all_genres())
         print(f"Database stats: {len(all_games)} games, {len(genres)} genres")
         
     except Exception as e:
         print(f"Error during initial parsing: {e}")
     
+    print("Starting bot...")
     # Запуск бота
     port = int(os.environ.get('PORT', 8080))
     bot.run()
-
-if __name__ == '__main__':
-    asyncio.run(main())
