@@ -37,7 +37,7 @@ class GameTrackerBot:
             welcome_text = """
 🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
-📱 **Версия:** beta-1.0.0
+📱 **Версия:** beta-1.0.1
 
 Я помогу вам найти игры по жанрам. Просто напишите название жанра, например:
 - Action
@@ -60,7 +60,7 @@ class GameTrackerBot:
             logger.error(f"Error in start_command: {e}")
             await safe_execute(
                 update.message.reply_text,
-                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.0"
+                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.1"
             )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
