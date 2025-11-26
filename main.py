@@ -37,7 +37,7 @@ class GameTrackerBot:
             welcome_text = """
 🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
-📱 **Версия:** beta-1.0.1
+📱 **Версия:** beta-1.0.2
 
 Я помогу вам найти игры по жанрам. Просто напишите название жанра, например:
 - Action
@@ -49,6 +49,7 @@ class GameTrackerBot:
 Доступные команды:
 /start - Показать это сообщение
 /genres - Список всех жанров
+/games - Список всех игр с описаниями
 /search [жанр] - Поиск игр по жанру
 
 Начните поиск прямо сейчас! 🚀
@@ -60,7 +61,7 @@ class GameTrackerBot:
             logger.error(f"Error in start_command: {e}")
             await safe_execute(
                 update.message.reply_text,
-                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.1"
+                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.2"
             )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,6 +98,91 @@ class GameTrackerBot:
             await safe_execute(
                 update.message.reply_text,
                 "❌ Ошибка при загрузке жанров. Попробуйте позже."
+            )
+    
+    async def games_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Показать все игры с картинками, рейтингами и описаниями"""
+        try:
+            await update.message.reply_text("🎮 Загружаю список всех игр...")
+            
+            games = await self.db.get_all_games()
+            
+            if not games:
+                await update.message.reply_text("🎮 Игры пока не загружены. Попробуйте позже.")
+                return
+            
+            logger.info(f"User {update.effective_user.id} requested all games ({len(games)} total)")
+            
+            # Отправляем игры по одной с полной информацией
+            for i, game in enumerate(games):
+                try:
+                    # Формируем сообщение как на сайте
+                    title = game.get('title', 'Без названия')
+                    rating = game.get('rating', 'N/A')
+                    description = game.get('description', 'Описание отсутствует')
+                    image_url = game.get('image_url', '')
+                    genres = game.get('genres', [])
+                    
+                    # Формируем текст сообщения
+                    message_text = f"🎮 **{title}**\n\n"
+                    
+                    # Рейтинг
+                    if rating and rating != "N/A":
+                        message_text += f"⭐ **Рейтинг:** {rating}/10\n\n"
+                    
+                    # Жанры
+                    if genres:
+                        message_text += f"🏷️ **Жанры:** {', '.join(genres)}\n\n"
+                    
+                    # Описание
+                    if description:
+                        # Ограничиваем описание для Telegram
+                        desc_short = description[:500] + "..." if len(description) > 500 else description
+                        message_text += f"📝 **Описание:**\n{desc_short}\n\n"
+                    
+                    message_text += f"📊 **Игра #{i+1} из {len(games)}**"
+                    
+                    # Пытаемся отправить с картинкой
+                    if image_url:
+                        try:
+                            await update.message.reply_photo(
+                                photo=image_url,
+                                caption=message_text,
+                                parse_mode='Markdown'
+                            )
+                        except Exception as photo_error:
+                            logger.warning(f"Failed to send photo for {title}: {photo_error}")
+                            # Если картинка не загрузилась, отправляем только текст
+                            await update.message.reply_text(
+                                message_text,
+                                parse_mode='Markdown'
+                            )
+                    else:
+                        # Нет картинки - отправляем только текст
+                        await update.message.reply_text(
+                            message_text,
+                            parse_mode='Markdown'
+                        )
+                    
+                    # Небольшая задержка между сообщениями
+                    await asyncio.sleep(0.5)
+                    
+                except Exception as game_error:
+                    logger.error(f"Error sending game {game.get('title', 'Unknown')}: {game_error}")
+                    continue
+            
+            # Завершающее сообщение
+            await update.message.reply_text(
+                f"✅ **Показаны все {len(games)} игр!**\n\n"
+                "Используйте /genres для поиска по жанрам или /search [жанр] для фильтрации.",
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in games_command: {e}")
+            await safe_execute(
+                update.message.reply_text,
+                "❌ Ошибка при загрузке игр. Попробуйте позже."
             )
     
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -374,6 +460,7 @@ class GameTrackerBot:
         # Регистрация обработчиков
         application.add_handler(CommandHandler("start", self.start_command))
         application.add_handler(CommandHandler("genres", self.genres_command))
+        application.add_handler(CommandHandler("games", self.games_command))
         application.add_handler(CommandHandler("search", self.search_command))
         
         # Добавление админских команд
