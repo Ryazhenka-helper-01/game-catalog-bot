@@ -37,7 +37,7 @@ class GameTrackerBot:
             welcome_text = """
 🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
-📱 **Версия:** beta-1.0.2
+📱 **Версия:** beta-1.0.3
 
 Я помогу вам найти игры по жанрам. Просто напишите название жанра, например:
 - Action
@@ -61,7 +61,7 @@ class GameTrackerBot:
             logger.error(f"Error in start_command: {e}")
             await safe_execute(
                 update.message.reply_text,
-                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.2"
+                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.3"
             )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -101,10 +101,8 @@ class GameTrackerBot:
             )
     
     async def games_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Показать все игры с картинками, рейтингами и описаниями"""
+        """Показать все игры в виде кнопок по 5 штук"""
         try:
-            await update.message.reply_text("🎮 Загружаю список всех игр...")
-            
             games = await self.db.get_all_games()
             
             if not games:
@@ -113,70 +111,8 @@ class GameTrackerBot:
             
             logger.info(f"User {update.effective_user.id} requested all games ({len(games)} total)")
             
-            # Отправляем игры по одной с полной информацией
-            for i, game in enumerate(games):
-                try:
-                    # Формируем сообщение как на сайте
-                    title = game.get('title', 'Без названия')
-                    rating = game.get('rating', 'N/A')
-                    description = game.get('description', 'Описание отсутствует')
-                    image_url = game.get('image_url', '')
-                    genres = game.get('genres', [])
-                    
-                    # Формируем текст сообщения
-                    message_text = f"🎮 **{title}**\n\n"
-                    
-                    # Рейтинг
-                    if rating and rating != "N/A":
-                        message_text += f"⭐ **Рейтинг:** {rating}/10\n\n"
-                    
-                    # Жанры
-                    if genres:
-                        message_text += f"🏷️ **Жанры:** {', '.join(genres)}\n\n"
-                    
-                    # Описание
-                    if description:
-                        # Ограничиваем описание для Telegram
-                        desc_short = description[:500] + "..." if len(description) > 500 else description
-                        message_text += f"📝 **Описание:**\n{desc_short}\n\n"
-                    
-                    message_text += f"📊 **Игра #{i+1} из {len(games)}**"
-                    
-                    # Пытаемся отправить с картинкой
-                    if image_url:
-                        try:
-                            await update.message.reply_photo(
-                                photo=image_url,
-                                caption=message_text,
-                                parse_mode='Markdown'
-                            )
-                        except Exception as photo_error:
-                            logger.warning(f"Failed to send photo for {title}: {photo_error}")
-                            # Если картинка не загрузилась, отправляем только текст
-                            await update.message.reply_text(
-                                message_text,
-                                parse_mode='Markdown'
-                            )
-                    else:
-                        # Нет картинки - отправляем только текст
-                        await update.message.reply_text(
-                            message_text,
-                            parse_mode='Markdown'
-                        )
-                    
-                    # Небольшая задержка между сообщениями
-                    await asyncio.sleep(0.5)
-                    
-                except Exception as game_error:
-                    logger.error(f"Error sending game {game.get('title', 'Unknown')}: {game_error}")
-                    continue
-            
-            # Завершающее сообщение
-            await update.message.reply_text(
-                f"✅ **Показаны все {len(games)} игр!**\n\n"
-                "Используйте /genres для поиска по жанрам или /search [жанр] для фильтрации.",
-                parse_mode='Markdown'
-            )
+            # Показываем первые 5 игр
+            await self.show_games_page(update, games, 0)
             
         except Exception as e:
             logger.error(f"Error in games_command: {e}")
@@ -184,6 +120,54 @@ class GameTrackerBot:
                 update.message.reply_text,
                 "❌ Ошибка при загрузке игр. Попробуйте позже."
             )
+    
+    async def show_games_page(self, update, games: list, offset: int):
+        """Показать страницу с играми"""
+        # Берем 5 игр для текущей страницы
+        page_games = games[offset:offset+5]
+        
+        if not page_games:
+            await update.message.reply_text("� Больше игр нет.")
+            return
+        
+        # Создаем кнопки для игр
+        keyboard = []
+        for game in page_games:
+            title = game.get('title', 'Без названия')
+            game_id = game.get('id', 0)
+            keyboard.append([InlineKeyboardButton(f"🎮 {title}", callback_data=f"game_{game_id}_0")])
+        
+        # Добавляем навигационные кнопки
+        nav_buttons = []
+        
+        # Кнопка "Назад" если не первая страница
+        if offset > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"games_page_{offset-5}"))
+        
+        # Кнопка "Еще" если есть еще игры
+        if offset + 5 < len(games):
+            nav_buttons.append(InlineKeyboardButton("➡️ Еще 5 игр", callback_data=f"games_page_{offset+5}"))
+        
+        # Добавляем навигацию если есть кнопки
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Формируем сообщение
+        page_num = offset // 5 + 1
+        total_pages = (len(games) + 4) // 5  # Округляем вверх
+        
+        message_text = f"🎮 **Все игры Nintendo Switch**\n\n"
+        message_text += f"📄 Страница {page_num} из {total_pages}\n"
+        message_text += f"📊 Показано игр {offset+1}-{min(offset+5, len(games))} из {len(games)}\n\n"
+        message_text += "Выберите игру для подробной информации:"
+        
+        await update.message.reply_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
     
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /search"""
@@ -233,37 +217,60 @@ class GameTrackerBot:
         query = update.callback_query
         await query.answer()
         
-        data = query.data
+        callback_data = query.data
         
-        if data.startswith('genre_'):
-            # Поиск игр по жанру из кнопки
-            genre = data.replace('genre_', '', 1)
-            await self.search_games_by_genre_callback(query, genre)
+        try:
+            # Навигация по страницам игр
+            if callback_data.startswith("games_page_"):
+                offset = int(callback_data.split("_")[-1])
+                games = await self.db.get_all_games()
+                await self.show_games_page(query, games, offset)
+                return
             
-        elif data.startswith('game_'):
-            # Показать информацию об игре
-            game_id = int(data.split('_')[1])
-            page = int(data.split('_')[2])
-            await self.show_game_details(query, game_id, page)
+            # Обработка кнопки жанра
+            if callback_data.startswith("genre_"):
+                genre = callback_data.replace("genre_", "")
+                await self.search_games_by_genre_callback(query, genre)
+                return
             
-        elif data.startswith('more_'):
-            # Показать еще игры
-            parts = data.split('_')
-            genre = '_'.join(parts[1:-1])
-            offset = int(parts[-1])
-            await self.show_more_games(query, genre, offset)
-        elif data.startswith('back_to_search'):
-            # Возврат к поиску
-            await self.handle_back_to_search(query)
-        elif data == 'back_to_genres':
-            # Возврат к списку жанров
-            await self.genres_command_callback(query)
-        elif data.startswith('admin_'):
-            # Админские команды
-            await self.admin_commands.handle_admin_callback(update, context)
-        elif data == 'admin_back':
-            # Возврат в админское меню
-            await self.admin_commands.admin_menu(update, context)
+            # Обработка кнопки "больше жанров"
+            if callback_data == "more_genres":
+                await query.edit_message_text("📋 Все жанры загружены. Выберите интересующий:")
+                return
+            
+            # Обработка кнопки "назад к жанрам"
+            if callback_data == "back_to_genres":
+                await self.genres_command_callback(query)
+                return
+            
+            # Обработка кнопки игры
+            if callback_data.startswith("game_"):
+                parts = callback_data.split("_")
+                game_id = int(parts[1])
+                page = int(parts[2]) if len(parts) > 2 else 0
+                await self.show_game_details(query, game_id, page)
+                return
+            
+            # Обработка кнопки "еще игры в жанре"
+            if callback_data.startswith("more_"):
+                parts = callback_data.split("_")
+                genre = parts[1]
+                offset = int(parts[2]) if len(parts) > 2 else 5
+                await self.show_more_games(query, genre, offset)
+                return
+            
+            # Обработка кнопки "назад к поиску"
+            if callback_data == "back_to_search":
+                await self.handle_back_to_search(query)
+                return
+            
+            # Обработка noop (кнопка без действия)
+            if callback_data == "noop":
+                return
+            
+        except Exception as e:
+            logger.error(f"Error handling callback {callback_data}: {e}")
+            await query.edit_message_text("❌ Ошибка. Попробуйте снова.")
     
     async def genres_command_callback(self, query):
         """Показать все доступные жанры в виде кнопок (callback версия)"""
