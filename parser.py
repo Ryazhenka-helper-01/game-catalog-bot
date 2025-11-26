@@ -374,55 +374,97 @@ class GameParser:
         soup = BeautifulSoup(html, 'html.parser')
         games = []
         
-        # Расширенные селекторы для поиска игр
+        # Исключаем пагинацию - ищем только контентные элементы
+        # Сначала ищем основной контейнер с играми
+        content_container = None
+        container_selectors = [
+            'div.content',
+            'div.main-content', 
+            'div.post-content',
+            'div.catalog',
+            'div.games',
+            'section.content',
+            'main',
+            'div#content',
+            '.catalog-list',
+            '.games-list'
+        ]
+        
+        for selector in container_selectors:
+            container = soup.select_one(selector)
+            if container:
+                content_container = container
+                print(f"Page {page_num}: Found content container with selector: {selector}")
+                break
+        
+        # Если контейнер не найден, используем всю страницу
+        if not content_container:
+            content_container = soup
+            print(f"Page {page_num}: Using full page as content container")
+        
+        # Ищем только внутри контейнера, исключая навигацию и футер
+        navigation_selectors = [
+            'nav', '.navigation', '.pagination', '.paging', 
+            'footer', '.footer', 'header', '.header',
+            '.menu', '.sidebar', '.widget'
+        ]
+        
+        # Удаляем навигационные элементы
+        for nav_selector in navigation_selectors:
+            for nav_elem in content_container.select(nav_selector):
+                nav_elem.decompose()
+        
+        # Расширенные селекторы для поиска игр (только контентные)
         selectors = [
+            'article.post:not(:has(.pagination))',
+            'div.post:not(:has(.nav))',
             'article.game',
             'div.game-item', 
             'div.item-game',
-            'li.game',
-            'div.post',
-            'article.post',
             'div.catalog-item',
-            'li.catalog-item',
             'div.product',
             'article.product',
             'div.item',
-            'li.item',
             'div.card',
             'article.card',
             'div.entry',
             'article.entry',
-            'a[href*="/game/"]',
-            'a[href*="nintendo-switch"]',
-            'a[href*="switch"]'
+            'div[class*="post"]',
+            'article[class*="post"]',
+            'h2 a',  # Заголовки с ссылками
+            'h3 a',
+            'h4 a'
         ]
         
         game_elements = []
         for selector in selectors:
-            elements = soup.select(selector)
-            if elements:
-                game_elements = elements
-                print(f"Page {page_num}: Found {len(elements)} elements with selector: {selector}")
+            elements = content_container.select(selector)
+            # Фильтруем элементы, чтобы исключить пагинацию
+            filtered_elements = []
+            for elem in elements:
+                text = elem.get_text(strip=True)
+                href = elem.get('href', '') if elem.name == 'a' else ''
+                
+                # Исключаем элементы пагинации
+                if any(num in text for num in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '20', '30', '40', '50']) and len(text) < 5:
+                    continue
+                if 'page' in href.lower() and len(text) < 5:
+                    continue
+                if text in ['«', '»', '→', '←', '...', 'Next', 'Prev', 'Далее', 'Назад']:
+                    continue
+                    
+                filtered_elements.append(elem)
+            
+            if filtered_elements:
+                game_elements = filtered_elements
+                print(f"Page {page_num}: Found {len(filtered_elements)} elements with selector: {selector}")
                 break
         
-        # Если ничего не нашли, ищем по ссылкам и тексту
+        # Если все еще ничего не нашли, ищем по заголовкам с текстом длиннее 5 символов
         if not game_elements:
-            links = soup.find_all('a', href=True)
-            game_links = []
-            for link in links:
-                href = link.get('href', '')
-                text = link.get_text(strip=True)
-                if ('nintendo-switch' in href or 'game' in href or 'switch' in href) and text:
-                    game_links.append(link)
-            
-            game_elements = game_links
-            print(f"Page {page_num}: Found {len(game_links)} links containing game-related terms")
-        
-        # Если все еще ничего не нашли, ищем по заголовкам
-        if not game_elements:
-            headers = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            game_elements = [h for h in headers if h.get_text(strip=True)]
-            print(f"Page {page_num}: Found {len(headers)} headers as fallback")
+            headers = content_container.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+            game_elements = [h for h in headers if len(h.get_text(strip=True)) > 5]
+            print(f"Page {page_num}: Found {len(game_elements)} headers with text > 5 chars")
         
         for i, element in enumerate(game_elements):
             try:
@@ -433,16 +475,20 @@ class GameParser:
                     title = game.get('title', '')
                     print(f"Page {page_num}: Raw title extracted: '{title}' (length: {len(title)})")
                     
-                    # Убираем строгую проверку длины, оставляем только проверку на непустоту
-                    if title and title.strip():
-                        # Проверяем, что игра еще не добавлена
-                        if not any(g.get('title') == title for g in games):
-                            games.append(game)
-                            print(f"Page {page_num}: Successfully parsed game - {title}")
+                    # Фильтруем короткие названия (вероятно пагинация)
+                    if title and title.strip() and len(title.strip()) > 3:
+                        # Дополнительная проверка на пагинацию
+                        if not any(char.isdigit() and len(title) < 10 for char in title):
+                            # Проверяем, что игра еще не добавлена
+                            if not any(g.get('title') == title for g in games):
+                                games.append(game)
+                                print(f"Page {page_num}: Successfully parsed game - {title}")
+                            else:
+                                print(f"Page {page_num}: Duplicate game skipped - {title}")
                         else:
-                            print(f"Page {page_num}: Duplicate game skipped - {title}")
+                            print(f"Page {page_num}: Title looks like pagination, skipping - {title}")
                     else:
-                        print(f"Page {page_num}: Empty or invalid title, skipping")
+                        print(f"Page {page_num}: Empty or too short title, skipping")
                 else:
                     print(f"Page {page_num}: parse_game_element returned None")
             except Exception as e:
