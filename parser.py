@@ -109,22 +109,47 @@ class GameParser:
         soup = BeautifulSoup(html, 'html.parser')
         games = []
         
-        # Ищем элементы с играми - это может быть разная структура
-        game_elements = soup.find_all(['div', 'article', 'li'], class_=re.compile(r'game|item|card|product', re.I))
+        # Ищем элементы с играми - разные возможные селекторы
+        selectors = [
+            'article.game',
+            'div.game-item', 
+            'div.item-game',
+            'li.game',
+            'div.post',
+            'article.post',
+            'div.catalog-item',
+            'li.catalog-item',
+            'div.product',
+            'article.product',
+            'a[href*="/game/"]',
+            'a[href*="nintendo-switch"]'
+        ]
         
+        game_elements = []
+        for selector in selectors:
+            elements = soup.select(selector)
+            if elements:
+                game_elements = elements
+                print(f"Found {len(elements)} elements with selector: {selector}")
+                break
+        
+        # Если ничего не нашли, ищем по ссылкам
         if not game_elements:
-            # Альтернативный поиск по ссылкам
-            game_elements = soup.find_all('a', href=re.compile(r'/game/|/nintendo-switch/'))
+            links = soup.find_all('a', href=True)
+            game_elements = [link for link in links if 'nintendo-switch' in link.get('href', '') or 'game' in link.get('href', '')]
+            print(f"Found {len(game_elements)} links containing nintendo-switch or game")
         
         for element in game_elements:
             try:
                 game = await self.parse_game_element(element)
-                if game:
+                if game and game.get('title'):
                     games.append(game)
+                    print(f"Parsed game: {game.get('title', 'Unknown')}")
             except Exception as e:
                 logger.error(f"Error parsing game element: {e}")
                 continue
         
+        print(f"Total games parsed: {len(games)}")
         return games
     
     async def parse_game_element(self, element) -> Optional[Dict]:

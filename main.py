@@ -305,6 +305,23 @@ if __name__ == '__main__':
     
     asyncio.get_event_loop().run_until_complete(bot.db.init_db())
     
+    # Автоматический парсинг игр при первом запуске
+    print("Starting initial game parsing...")
+    try:
+        games = asyncio.get_event_loop().run_until_complete(bot.parser.get_all_games())
+        if games:
+            print(f"Found {len(games)} games from asst2game.ru")
+            added_count = 0
+            for game in games:
+                success = asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
+                if success:
+                    added_count += 1
+            print(f"Successfully added {added_count} games to database")
+        else:
+            print("No games found on the website")
+    except Exception as e:
+        print(f"Error during initial parsing: {e}")
+    
     # Запуск бота
     port = int(os.environ.get('PORT', 8080))
     bot.run()
