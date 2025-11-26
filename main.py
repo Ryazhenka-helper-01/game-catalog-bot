@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import traceback
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -8,16 +9,13 @@ from database import Database
 from parser import GameParser
 from scheduler import GameScheduler
 from admin import AdminCommands
+from utils import setup_logger, safe_execute
 
 # Загрузка переменных окружения
 load_dotenv()
 
 # Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__, level=logging.INFO)
 
 class GameTrackerBot:
     def __init__(self):
@@ -35,7 +33,8 @@ class GameTrackerBot:
         
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
-        welcome_text = """
+        try:
+            welcome_text = """
 🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
 📱 **Версия:** beta-1.0.0
@@ -53,8 +52,16 @@ class GameTrackerBot:
 /search [жанр] - Поиск игр по жанру
 
 Начните поиск прямо сейчас! 🚀
-        """
-        await update.message.reply_text(welcome_text, parse_mode='Markdown')
+            """
+            await update.message.reply_text(welcome_text, parse_mode='Markdown')
+            logger.info(f"User {update.effective_user.id} started the bot")
+            
+        except Exception as e:
+            logger.error(f"Error in start_command: {e}")
+            await safe_execute(
+                update.message.reply_text,
+                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.0"
+            )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать все доступные жанры в виде кнопок"""
@@ -83,10 +90,14 @@ class GameTrackerBot:
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
+            logger.info(f"User {update.effective_user.id} viewed genres ({len(genres)} total)")
             
         except Exception as e:
             logger.error(f"Error in genres_command: {e}")
-            await update.message.reply_text("❌ Ошибка при загрузке жанров")
+            await safe_execute(
+                update.message.reply_text,
+                "❌ Ошибка при загрузке жанров. Попробуйте позже."
+            )
     
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /search"""

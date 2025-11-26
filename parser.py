@@ -1,13 +1,20 @@
 import asyncio
 import aiohttp
 import logging
+import traceback
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 import re
+import json
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
+from utils import (
+    setup_logger, safe_execute, clean_text, is_valid_url, normalize_url,
+    safe_download_image, validate_game_data, extract_rating, extract_genres,
+    request_cache
+)
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 class GameParser:
     def __init__(self):
@@ -26,17 +33,43 @@ class GameParser:
         if self.session:
             await self.session.close()
     
-    async def get_page(self, url: str) -> Optional[str]:
-        """Получить HTML страницы"""
+    async def get_page(self, url: str, use_cache: bool = True) -> Optional[str]:
+        """Получить HTML страницы с кэшированием и улучшенной обработкой ошибок"""
+        if not is_valid_url(url):
+            logger.error(f"Invalid URL: {url}")
+            return None
+        
+        # Проверяем кэш
+        if use_cache:
+            cached_content = request_cache.get(url)
+            if cached_content:
+                logger.debug(f"Using cached content for {url}")
+                return cached_content
+        
         try:
-            async with self.session.get(url) as response:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with self.session.get(url, timeout=timeout) as response:
                 if response.status == 200:
-                    return await response.text()
+                    content = await response.text()
+                    
+                    # Сохраняем в кэш только если контент не пустой
+                    if use_cache and content.strip():
+                        request_cache.set(url, content, ttl=300)  # 5 минут
+                    
+                    logger.debug(f"Successfully fetched {url} ({len(content)} chars)")
+                    return content
                 else:
                     logger.error(f"Failed to fetch {url}: Status {response.status}")
                     return None
+                    
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching {url}")
+            return None
+        except aiohttp.ClientError as e:
+            logger.error(f"Client error fetching {url}: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error fetching {url}: {e}")
+            logger.error(f"Unexpected error fetching {url}: {e}")
             return None
     
     def clean_text(self, text: str) -> str:
@@ -265,124 +298,212 @@ class GameParser:
         return game if game.get('title') else None
     
     async def parse_game_details(self, game_url: str) -> Optional[Dict]:
-        """Парсинг детальной страницы игры"""
-        html = await self.get_page(game_url)
+        """Парсинг детальной страницы игры с улучшенной обработкой"""
+        if not is_valid_url(game_url):
+            logger.error(f"Invalid game URL: {game_url}")
+            return None
+        
+        html = await self.get_page(game_url, use_cache=True)
         if not html:
+            logger.warning(f"No content fetched for {game_url}")
             return None
         
         soup = BeautifulSoup(html, 'html.parser')
         game = {'url': game_url}
         
-        # Название игры
-        title_elem = soup.find(['h1', 'h2'], class_=re.compile(r'title|name|game', re.I))
-        if not title_elem:
-            title_elem = soup.find('h1')
-        if title_elem:
-            game['title'] = self.clean_text(title_elem.get_text())
-        
-        # Описание - пробуем разные селекторы
-        description = ""
-        desc_selectors = [
-            'div.description', 'div.summary', 'div.about',
-            'section.description', 'article p', 'div.content p',
-            'div.post-content p', 'div.entry-content p',
-            'div[itemprop="description"]', '.game-description',
-            'p.description', '.summary'
+        try:
+            # Название игры с несколькими попытками
+            title = safe_execute(self._extract_title, soup, default="")
+            if not title:
+                logger.warning(f"No title found for {game_url}")
+                return None
+            game['title'] = title
+            
+            # Описание с улучшенным поиском
+            description = safe_execute(self._extract_description, soup, default="")
+            game['description'] = description
+            
+            # Рейтинг
+            rating = safe_execute(self._extract_rating, soup, default="N/A")
+            game['rating'] = rating
+            
+            # Жанры
+            genres = safe_execute(self._extract_genres_from_page, soup, default=[])
+            game['genres'] = genres
+            
+            # Изображение
+            image_url = safe_execute(self._extract_image, soup, game_url, default="")
+            game['image_url'] = image_url
+            
+            # Скриншоты
+            screenshots = safe_execute(self._extract_screenshots, soup, game_url, default=[])
+            game['screenshots'] = screenshots
+            
+            # Дата релиза
+            release_date = safe_execute(self._extract_release_date, soup, default="")
+            game['release_date'] = release_date
+            
+            # Валидация данных
+            validated_game = validate_game_data(game)
+            
+            if not validated_game.get('title'):
+                logger.warning(f"Invalid game data after validation for {game_url}")
+                return None
+            
+            logger.info(f"Successfully parsed {validated_game['title']}: {len(genres)} genres, {len(screenshots)} screenshots")
+            return validated_game
+            
+        except Exception as e:
+            logger.error(f"Error parsing game details for {game_url}: {e}")
+            logger.debug(traceback.format_exc())
+            return None
+    
+    def _extract_title(self, soup) -> str:
+        """Извлечение названия игры"""
+        selectors = [
+            'h1', 'h2.title', '.game-title', '.entry-title',
+            'h2', '.post-title', '.product-title', 'title'
         ]
         
-        for selector in desc_selectors:
-            desc_elem = soup.select_one(selector)
-            if desc_elem:
-                text = self.clean_text(desc_elem.get_text())
-                if len(text) > 50:  # Берем только осмысленные описания
-                    description = text[:1000]  # Ограничиваем длину
-                    break
+        for selector in selectors:
+            elem = soup.select_one(selector)
+            if elem:
+                title = clean_text(elem.get_text())
+                if title and len(title) > 3:
+                    return title[:200]
         
-        # Если не нашли, берем первый абзац после заголовка
-        if not description:
-            paragraphs = soup.find_all('p')
-            for p in paragraphs:
-                text = self.clean_text(p.get_text())
-                if len(text) > 50 and 'Nintendo Switch' not in text:
-                    description = text[:500]
-                    break
-        
-        game['description'] = description
-        
-        # Рейтинг
-        rating_elem = soup.find(['span', 'div', 'strong'], class_=re.compile(r'rating|score|rate', re.I))
-        if rating_elem:
-            game['rating'] = self.extract_rating(rating_elem.get_text())
-        else:
-            game['rating'] = "N/A"
-        
-        # Жанры - ищем в разных местах
-        genres = []
-        genre_selectors = [
-            'div.genres', 'div.categories', 'div.tags',
-            'span.genre', 'span.category', '.game-genres',
-            'div[itemprop="genre"]', '.genre-list',
-            'p.genre', '.categories'
+        return ""
+    
+    def _extract_description(self, soup) -> str:
+        """Извлечение описания"""
+        selectors = [
+            '.description', '.game-description', '.summary', '.about',
+            '.post-content', '.entry-content', '.content', 'article p',
+            '.game-info', '.details', 'div[itemprop="description"]'
         ]
         
-        for selector in genre_selectors:
-            genre_elem = soup.select_one(selector)
-            if genre_elem:
-                genres = self.extract_genres(genre_elem.get_text())
+        for selector in selectors:
+            elem = soup.select_one(selector)
+            if elem:
+                text = clean_text(elem.get_text())
+                if len(text) > 50:  # Только осмысленные описания
+                    return text[:1000]
+        
+        # Запасной вариант - первый абзац
+        paragraphs = soup.find_all('p')
+        for p in paragraphs:
+            text = clean_text(p.get_text())
+            if len(text) > 50 and 'Nintendo Switch' not in text:
+                return text[:500]
+        
+        return ""
+    
+    def _extract_rating(self, soup) -> str:
+        """Извлечение рейтинга"""
+        selectors = [
+            '.rating', '.score', '.game-rating', '.stars',
+            'span.rating', 'div.rating', '.rate', '[itemprop="ratingValue"]'
+        ]
+        
+        for selector in selectors:
+            elem = soup.select_one(selector)
+            if elem:
+                rating = extract_rating(elem.get_text())
+                if rating != "N/A":
+                    return rating
+        
+        return "N/A"
+    
+    def _extract_genres_from_page(self, soup) -> List[str]:
+        """Извлечение жанров со страницы"""
+        selectors = [
+            '.genres', '.categories', '.tags', '.game-genres',
+            'span.genre', '.genre-list', 'div[itemprop="genre"]',
+            '.category', '.tags-list'
+        ]
+        
+        for selector in selectors:
+            elem = soup.select_one(selector)
+            if elem:
+                genres = extract_genres(elem.get_text())
                 if genres:
-                    break
+                    return genres
         
-        # Если не нашли, ищем жанры в тексте страницы
-        if not genres:
-            page_text = soup.get_text()
-            common_genres = ['Action', 'Adventure', 'RPG', 'Puzzle', 'Strategy', 'Simulation', 
-                           'Sports', 'Racing', 'Fighting', 'Platformer', 'Shooter', 'Horror']
-            for genre in common_genres:
-                if genre.lower() in page_text.lower():
-                    genres.append(genre)
+        # Если не нашли в специальных блоках, ищем в тексте
+        page_text = soup.get_text()
+        return extract_genres(page_text)
+    
+    def _extract_image(self, soup, base_url: str) -> str:
+        """Извлечение главного изображения"""
+        selectors = [
+            '.poster img', '.cover img', '.main-image img',
+            '.game-image img', 'img.poster', 'img.cover',
+            '.product-image img', 'img[alt*="game"]'
+        ]
         
-        game['genres'] = genres
+        for selector in selectors:
+            elem = soup.select_one(selector)
+            if elem:
+                src = elem.get('src') or elem.get('data-src')
+                if src:
+                    return normalize_url(base_url, src)
         
-        # Изображение
-        img_elem = soup.find('img', class_=re.compile(r'poster|cover|main', re.I))
-        if not img_elem:
-            img_elem = soup.find('img')
-        if img_elem:
-            game['image_url'] = img_elem.get('src') or img_elem.get('data-src')
-            if game['image_url'] and not game['image_url'].startswith('http'):
-                game['image_url'] = urljoin(game_url, game['image_url'])
-        
-        # Скриншоты
-        screenshots = []
-        screenshot_elements = soup.find_all('img', class_=re.compile(r'screenshot|screen|gallery', re.I))
-        for img in screenshot_elements:
+        # Запасной вариант - первое изображение
+        img = soup.find('img')
+        if img:
             src = img.get('src') or img.get('data-src')
             if src:
-                if not src.startswith('http'):
-                    src = urljoin(game_url, src)
-                screenshots.append(src)
+                return normalize_url(base_url, src)
         
-        # Если скриншотов нет, ищем обычные картинки
-        if not screenshots:
+        return ""
+    
+    def _extract_screenshots(self, soup, base_url: str) -> List[str]:
+        """Извлечение скриншотов"""
+        screenshots = []
+        
+        selectors = [
+            '.screenshot img', '.gallery img', '.screenshots img',
+            '.game-gallery img', '.media img', 'img.screenshot'
+        ]
+        
+        for selector in selectors:
+            elements = soup.select(selector)
+            for elem in elements:
+                src = elem.get('src') or elem.get('data-src')
+                if src:
+                    full_url = normalize_url(base_url, src)
+                    if is_valid_url(full_url) and len(screenshots) < 10:
+                        screenshots.append(full_url)
+        
+        # Если скриншотов мало, добавляем обычные изображения
+        if len(screenshots) < 3:
             all_images = soup.find_all('img')
-            for img in all_images[1:6]:  # Берем первые 5 картинок после основной
+            for img in all_images[1:6]:  # Пропускаем первый (обычно логотип)
                 src = img.get('src') or img.get('data-src')
                 if src and 'logo' not in src.lower() and 'icon' not in src.lower():
-                    if not src.startswith('http'):
-                        src = urljoin(game_url, src)
-                    screenshots.append(src)
+                    full_url = normalize_url(base_url, src)
+                    if is_valid_url(full_url) and full_url not in screenshots:
+                        screenshots.append(full_url)
+                        if len(screenshots) >= 5:
+                            break
         
-        game['screenshots'] = screenshots[:10]  # Максимум 10 скриншотов
+        return screenshots[:10]
+    
+    def _extract_release_date(self, soup) -> str:
+        """Извлечение даты релиза"""
+        selectors = [
+            '.release-date', '.date', '.publish-date',
+            'time', '[itemprop="datePublished"]', '.game-date'
+        ]
         
-        # Дата релиза
-        date_elem = soup.find(['time', 'span', 'div'], class_=re.compile(r'date|release|published', re.I))
-        if date_elem:
-            game['release_date'] = self.clean_text(date_elem.get_text())
-        else:
-            game['release_date'] = datetime.now().strftime('%Y-%m-%d')
+        for selector in selectors:
+            elem = soup.select_one(selector)
+            if elem:
+                date_text = clean_text(elem.get_text())
+                if date_text and len(date_text) > 4:
+                    return date_text[:20]
         
-        print(f"Parsed details for {game.get('title', 'Unknown')}: genres={genres}, description_length={len(description)}")
-        return game
+        return datetime.now().strftime('%Y-%m-%d')
     
     async def get_all_games(self) -> List[Dict]:
         """Получить все игры с сайта (все страницы) с детальной информацией"""
