@@ -37,7 +37,7 @@ class GameTrackerBot:
             welcome_text = """
 🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
-📱 **Версия:** beta-1.0.3
+📱 **Версия:** beta-1.0.4
 
 Я помогу вам найти игры по жанрам. Просто напишите название жанра, например:
 - Action
@@ -61,7 +61,7 @@ class GameTrackerBot:
             logger.error(f"Error in start_command: {e}")
             await safe_execute(
                 update.message.reply_text,
-                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.3"
+                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.4"
             )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -337,7 +337,7 @@ class GameTrackerBot:
         )
     
     async def show_game_details(self, query, game_id: int, page: int = 0):
-        """Показать детальную информацию об игре"""
+        """Показать детальную информацию об игре с жанрами"""
         game = await self.db.get_game_by_id(game_id)
         
         if not game:
@@ -350,20 +350,43 @@ class GameTrackerBot:
         rating = game.get('rating', 'N/A')
         genres = game.get('genres', [])
         image_url = game.get('image_url', '')
+        release_date = game.get('release_date', '')
         
         message_text = f"🎮 **{title}**\n\n"
-        message_text += f"⭐ **Рейтинг:** {rating}/10\n\n"
         
+        # Рейтинг
+        if rating and rating != "N/A":
+            message_text += f"⭐ **Рейтинг:** {rating}/10\n\n"
+        
+        # ЖАНРЫ - главное улучшение!
         if genres:
             message_text += f"🏷️ **Жанры:** {', '.join(genres)}\n\n"
+        else:
+            message_text += f"🏷️ **Жанры:** Не указаны\n\n"
         
-        message_text += f"📝 **Описание:**\n{description}\n\n"
+        # Дата релиза
+        if release_date:
+            message_text += f"📅 **Дата релиза:** {release_date}\n\n"
+        
+        # Описание
+        if description and description != 'Описание отсутствует':
+            # Ограничиваем описание для лучшей читаемости
+            desc_short = description[:800] + "..." if len(description) > 800 else description
+            message_text += f"📝 **Описание:**\n{desc_short}\n\n"
+        else:
+            message_text += f"📝 **Описание:** Отсутствует\n\n"
+        
+        # Добавляем информацию о скриншотах
+        screenshots = game.get('screenshots', [])
+        if screenshots:
+            message_text += f"🖼️ **Скриншоты:** {len(screenshots)} шт. (используйте кнопки ниже)\n\n"
+        
+        message_text += f"🔗 **Источник:** [Игры Nintendo Switch]({game.get('url', '')})\n\n"
         
         # Создаем клавиатуру для навигации по скриншотам
         keyboard = []
         
         # Кнопки навигации по скриншотам
-        screenshots = game.get('screenshots', [])
         if screenshots:
             nav_buttons = []
             if page > 0:
@@ -396,14 +419,16 @@ class GameTrackerBot:
                 await query.edit_message_text(
                     text=message_text,
                     reply_markup=reply_markup,
-                    parse_mode='Markdown'
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
                 )
         except Exception as e:
             logger.error(f"Error sending game details: {e}")
             await query.edit_message_text(
                 text=message_text,
                 reply_markup=reply_markup,
-                parse_mode='Markdown'
+                parse_mode='Markdown',
+                disable_web_page_preview=True
             )
     
     async def show_more_games(self, query, genre: str, offset: int):
