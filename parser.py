@@ -152,7 +152,7 @@ class GameParser:
         print(f"Total games parsed: {len(games)}")
         return games
     
-    async def parse_game_element(self, element) -> Optional[Dict]:
+    async def parse_game_element(self, element, page_num: int = 1) -> Optional[Dict]:
         """Парсинг отдельного элемента игры"""
         game = {}
         
@@ -169,7 +169,11 @@ class GameParser:
         # Ссылка на игру
         link_elem = element.find('a', href=True)
         if link_elem:
-            game['url'] = urljoin(self.base_url, link_elem['href'])
+            href = link_elem.get('href', '')
+            if href.startswith('http'):
+                game['url'] = href
+            else:
+                game['url'] = urljoin(self.base_url, href)
         else:
             game['url'] = self.base_url
         
@@ -209,6 +213,9 @@ class GameParser:
             game['release_date'] = self.clean_text(date_elem.get_text())
         else:
             game['release_date'] = datetime.now().strftime('%Y-%m-%d')
+        
+        # Добавляем номер страницы для отладки
+        game['page_num'] = page_num
         
         return game if game.get('title') else None
     
@@ -272,32 +279,120 @@ class GameParser:
         return game
     
     async def get_all_games(self) -> List[Dict]:
-        """Получить все игры с сайта"""
+        """Получить все игры с сайта (все страницы)"""
         async with self:
-            # Сначала получаем список игр
-            games = await self.parse_game_list()
+            all_games = []
+            page = 1
+            max_pages = 50  # Ограничение для безопасности
             
-            # Затем получаем детальную информацию для каждой игры
-            detailed_games = []
-            for i, game in enumerate(games):
-                try:
-                    if game.get('url') and game['url'] != self.base_url:
-                        detailed_game = await self.parse_game_details(game['url'])
-                        if detailed_game:
-                            detailed_games.append(detailed_game)
-                    else:
-                        detailed_games.append(game)
+            while page <= max_pages:
+                # Формируем URL для пагинации
+                if page == 1:
+                    page_url = self.base_url
+                else:
+                    # Попробуем разные варианты пагинации
+                    page_urls = [
+                        f"{self.base_url}?page={page}",
+                        f"{self.base_url}page/{page}/",
+                        f"{self.base_url}page-{page}/",
+                        f"{self.base_url}p/{page}/",
+                        f"https://asst2game.ru/consoles/nintendo-switch/page/{page}/"
+                    ]
                     
-                    # Небольшая задержка между запросами
-                    if i < len(games) - 1:
-                        await asyncio.sleep(0.5)
-                        
-                except Exception as e:
-                    logger.error(f"Error getting details for game {game.get('title', 'Unknown')}: {e}")
-                    # Если не удалось получить детали, добавляем базовую информацию
-                    detailed_games.append(game)
+                    page_url = page_urls[-1]  # Используем последний вариант
+                
+                print(f"Parsing page {page}: {page_url}")
+                
+                # Получаем игры с текущей страницы
+                games = await self.parse_page_games(page_url, page)
+                
+                if not games:
+                    print(f"No games found on page {page}, stopping pagination")
+                    break
+                
+                all_games.extend(games)
+                print(f"Found {len(games)} games on page {page}, total: {len(all_games)}")
+                
+                # Небольшая задержка между запросами
+                await asyncio.sleep(1)
+                page += 1
             
-            return detailed_games
+            print(f"Total games found across all pages: {len(all_games)}")
+            return all_games
+    
+    async def parse_page_games(self, page_url: str, page_num: int) -> List[Dict]:
+        """Парсинг игр с конкретной страницы"""
+        html = await self.get_page(page_url)
+        if not html:
+            return []
+        
+        soup = BeautifulSoup(html, 'html.parser')
+        games = []
+        
+        # Расширенные селекторы для поиска игр
+        selectors = [
+            'article.game',
+            'div.game-item', 
+            'div.item-game',
+            'li.game',
+            'div.post',
+            'article.post',
+            'div.catalog-item',
+            'li.catalog-item',
+            'div.product',
+            'article.product',
+            'div.item',
+            'li.item',
+            'div.card',
+            'article.card',
+            'div.entry',
+            'article.entry',
+            'a[href*="/game/"]',
+            'a[href*="nintendo-switch"]',
+            'a[href*="switch"]'
+        ]
+        
+        game_elements = []
+        for selector in selectors:
+            elements = soup.select(selector)
+            if elements:
+                game_elements = elements
+                print(f"Page {page_num}: Found {len(elements)} elements with selector: {selector}")
+                break
+        
+        # Если ничего не нашли, ищем по ссылкам и тексту
+        if not game_elements:
+            links = soup.find_all('a', href=True)
+            game_links = []
+            for link in links:
+                href = link.get('href', '')
+                text = link.get_text(strip=True)
+                if ('nintendo-switch' in href or 'game' in href or 'switch' in href) and text:
+                    game_links.append(link)
+            
+            game_elements = game_links
+            print(f"Page {page_num}: Found {len(game_links)} links containing game-related terms")
+        
+        # Если все еще ничего не нашли, ищем по заголовкам
+        if not game_elements:
+            headers = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+            game_elements = [h for h in headers if h.get_text(strip=True)]
+            print(f"Page {page_num}: Found {len(headers)} headers as fallback")
+        
+        for element in game_elements:
+            try:
+                game = await self.parse_game_element(element, page_num)
+                if game and game.get('title') and len(game.get('title', '')) > 2:
+                    # Проверяем, что игра еще не добавлена
+                    if not any(g.get('title') == game.get('title') for g in games):
+                        games.append(game)
+                        print(f"Page {page_num}: Parsed game - {game.get('title', 'Unknown')}")
+            except Exception as e:
+                logger.error(f"Page {page_num}: Error parsing game element: {e}")
+                continue
+        
+        print(f"Page {page_num}: Total unique games parsed: {len(games)}")
+        return games
     
     async def check_for_new_games(self, existing_titles: set) -> List[Dict]:
         """Проверить наличие новых игр"""
