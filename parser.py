@@ -280,20 +280,68 @@ class GameParser:
         if title_elem:
             game['title'] = self.clean_text(title_elem.get_text())
         
-        # Описание
-        desc_elem = soup.find(['div', 'section', 'p'], class_=re.compile(r'description|summary|about', re.I))
-        if desc_elem:
-            game['description'] = self.clean_text(desc_elem.get_text())
+        # Описание - пробуем разные селекторы
+        description = ""
+        desc_selectors = [
+            'div.description', 'div.summary', 'div.about',
+            'section.description', 'article p', 'div.content p',
+            'div.post-content p', 'div.entry-content p',
+            'div[itemprop="description"]', '.game-description',
+            'p.description', '.summary'
+        ]
+        
+        for selector in desc_selectors:
+            desc_elem = soup.select_one(selector)
+            if desc_elem:
+                text = self.clean_text(desc_elem.get_text())
+                if len(text) > 50:  # Берем только осмысленные описания
+                    description = text[:1000]  # Ограничиваем длину
+                    break
+        
+        # Если не нашли, берем первый абзац после заголовка
+        if not description:
+            paragraphs = soup.find_all('p')
+            for p in paragraphs:
+                text = self.clean_text(p.get_text())
+                if len(text) > 50 and 'Nintendo Switch' not in text:
+                    description = text[:500]
+                    break
+        
+        game['description'] = description
         
         # Рейтинг
         rating_elem = soup.find(['span', 'div', 'strong'], class_=re.compile(r'rating|score|rate', re.I))
         if rating_elem:
             game['rating'] = self.extract_rating(rating_elem.get_text())
+        else:
+            game['rating'] = "N/A"
         
-        # Жанры
-        genre_elem = soup.find(['div', 'span', 'p'], class_=re.compile(r'genre|category|tag', re.I))
-        if genre_elem:
-            game['genres'] = self.extract_genres(genre_elem.get_text())
+        # Жанры - ищем в разных местах
+        genres = []
+        genre_selectors = [
+            'div.genres', 'div.categories', 'div.tags',
+            'span.genre', 'span.category', '.game-genres',
+            'div[itemprop="genre"]', '.genre-list',
+            'p.genre', '.categories'
+        ]
+        
+        for selector in genre_selectors:
+            genre_elem = soup.select_one(selector)
+            if genre_elem:
+                genres = self.extract_genres(genre_elem.get_text())
+                if genres:
+                    break
+        
+        # Если не нашли, ищем жанры в тексте страницы
+        if not genres:
+            page_text = soup.get_text()
+            common_genres = ['Action', 'Adventure', 'RPG', 'Puzzle', 'Strategy', 'Simulation', 
+                           'Sports', 'Racing', 'Fighting', 'Platformer', 'Shooter', 'Horror']
+            for genre in common_genres:
+                if genre.lower() in page_text.lower():
+                    genres.append(genre)
+        
+        game['genres'] = genres
         
         # Изображение
         img_elem = soup.find('img', class_=re.compile(r'poster|cover|main', re.I))
@@ -314,13 +362,26 @@ class GameParser:
                     src = urljoin(game_url, src)
                 screenshots.append(src)
         
+        # Если скриншотов нет, ищем обычные картинки
+        if not screenshots:
+            all_images = soup.find_all('img')
+            for img in all_images[1:6]:  # Берем первые 5 картинок после основной
+                src = img.get('src') or img.get('data-src')
+                if src and 'logo' not in src.lower() and 'icon' not in src.lower():
+                    if not src.startswith('http'):
+                        src = urljoin(game_url, src)
+                    screenshots.append(src)
+        
         game['screenshots'] = screenshots[:10]  # Максимум 10 скриншотов
         
         # Дата релиза
         date_elem = soup.find(['time', 'span', 'div'], class_=re.compile(r'date|release|published', re.I))
         if date_elem:
             game['release_date'] = self.clean_text(date_elem.get_text())
+        else:
+            game['release_date'] = datetime.now().strftime('%Y-%m-%d')
         
+        print(f"Parsed details for {game.get('title', 'Unknown')}: genres={genres}, description_length={len(description)}")
         return game
     
     async def get_all_games(self) -> List[Dict]:

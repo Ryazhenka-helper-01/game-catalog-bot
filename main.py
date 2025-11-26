@@ -214,9 +214,9 @@ class GameTrackerBot:
         for game in games[:5]:
             keyboard.append([InlineKeyboardButton(game['title'], callback_data=f"game_{game['id']}_0")])
         
-        # Добавляем кнопку "Еще" если есть еще игры
+        # Добавляем кнопку "Показать еще игры" если есть еще игры
         if len(games) > 5:
-            keyboard.append([InlineKeyboardButton("➡️ Еще", callback_data=f"more_{genre}_5")])
+            keyboard.append([InlineKeyboardButton("📋 Показать еще игры", callback_data=f"more_{genre}_5")])
         
         # Кнопка "Назад к жанрам"
         keyboard.append([InlineKeyboardButton("🔙 Назад к жанрам", callback_data="back_to_genres")])
