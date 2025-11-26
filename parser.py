@@ -156,15 +156,53 @@ class GameParser:
         """Парсинг отдельного элемента игры"""
         game = {}
         
-        # Заголовок/название игры
-        title_elem = element.find(['h1', 'h2', 'h3', 'h4', 'span', 'a'], class_=re.compile(r'title|name|game', re.I))
-        if not title_elem:
-            title_elem = element.find('a')
+        # Расширенный поиск названия игры
+        title = ""
         
-        if title_elem:
-            game['title'] = self.clean_text(title_elem.get_text())
-        else:
-            game['title'] = self.clean_text(element.get_text())[:50]  # Первые 50 символов как название
+        # 1. Пробуем разные селекторы для заголовков
+        title_selectors = [
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            '.title', '.name', '.game-title', '.post-title',
+            '.entry-title', '.item-title', '.product-title'
+        ]
+        
+        for selector in title_selectors:
+            title_elem = element.select_one(selector)
+            if title_elem:
+                title = self.clean_text(title_elem.get_text())
+                if title:
+                    break
+        
+        # 2. Если не нашли, пробуем сам элемент
+        if not title:
+            title = self.clean_text(element.get_text())
+        
+        # 3. Если это ссылка, берем текст ссылки
+        if not title and element.name == 'a':
+            title = self.clean_text(element.get_text())
+        
+        # 4. Если все еще нет названия, пробуем атрибуты
+        if not title:
+            title = element.get('title') or element.get('alt') or ""
+        
+        # Очищаем название от лишнего текста
+        if title:
+            # Убираем общие слова и фразы
+            exclude_phrases = [
+                'Nintendo Switch', 'Switch', 'nintendo switch',
+                'Купить', 'Цена', 'Заказать', 'Скачать',
+                'Обзор', 'Рецензия', 'Прохождение',
+                'Читать далее', 'Подробнее', 'Перейти'
+            ]
+            
+            for phrase in exclude_phrases:
+                title = title.replace(phrase, '').strip()
+            
+            # Ограничиваем длину
+            if len(title) > 100:
+                title = title[:100].strip()
+        
+        game['title'] = title
         
         # Ссылка на игру
         link_elem = element.find('a', href=True)
@@ -187,11 +225,16 @@ class GameParser:
             game['image_url'] = ""
         
         # Описание
-        desc_elem = element.find(['p', 'div', 'span'], class_=re.compile(r'desc|description|summary', re.I))
+        desc_elem = element.find(['p', 'div', 'span'], class_=re.compile(r'desc|description|summary|excerpt', re.I))
         if desc_elem:
-            game['description'] = self.clean_text(desc_elem.get_text())[:500]  # Первые 500 символов
+            game['description'] = self.clean_text(desc_elem.get_text())[:500]
         else:
-            game['description'] = ""
+            # Берем первые 300 символов из текста элемента как описание
+            full_text = self.clean_text(element.get_text())
+            if len(full_text) > len(title) + 50:
+                game['description'] = full_text[len(title):len(title)+300].strip()
+            else:
+                game['description'] = ""
         
         # Рейтинг
         rating_elem = element.find(['span', 'div', 'strong'], class_=re.compile(r'rating|score|rate', re.I))
@@ -205,7 +248,9 @@ class GameParser:
         if genre_elem:
             game['genres'] = self.extract_genres(genre_elem.get_text())
         else:
-            game['genres'] = []
+            # Пытаемся извлечь жанры из текста
+            full_text = self.clean_text(element.get_text())
+            game['genres'] = self.extract_genres(full_text)
         
         # Дата добавления
         date_elem = element.find(['time', 'span', 'div'], class_=re.compile(r'date|time|published', re.I))
@@ -379,16 +424,29 @@ class GameParser:
             game_elements = [h for h in headers if h.get_text(strip=True)]
             print(f"Page {page_num}: Found {len(headers)} headers as fallback")
         
-        for element in game_elements:
+        for i, element in enumerate(game_elements):
             try:
+                print(f"Page {page_num}: Processing element {i+1}/{len(game_elements)}")
                 game = await self.parse_game_element(element, page_num)
-                if game and game.get('title') and len(game.get('title', '')) > 2:
-                    # Проверяем, что игра еще не добавлена
-                    if not any(g.get('title') == game.get('title') for g in games):
-                        games.append(game)
-                        print(f"Page {page_num}: Parsed game - {game.get('title', 'Unknown')}")
+                
+                if game:
+                    title = game.get('title', '')
+                    print(f"Page {page_num}: Raw title extracted: '{title}' (length: {len(title)})")
+                    
+                    # Убираем строгую проверку длины, оставляем только проверку на непустоту
+                    if title and title.strip():
+                        # Проверяем, что игра еще не добавлена
+                        if not any(g.get('title') == title for g in games):
+                            games.append(game)
+                            print(f"Page {page_num}: Successfully parsed game - {title}")
+                        else:
+                            print(f"Page {page_num}: Duplicate game skipped - {title}")
+                    else:
+                        print(f"Page {page_num}: Empty or invalid title, skipping")
+                else:
+                    print(f"Page {page_num}: parse_game_element returned None")
             except Exception as e:
-                logger.error(f"Page {page_num}: Error parsing game element: {e}")
+                logger.error(f"Page {page_num}: Error parsing game element {i}: {e}")
                 continue
         
         print(f"Page {page_num}: Total unique games parsed: {len(games)}")
