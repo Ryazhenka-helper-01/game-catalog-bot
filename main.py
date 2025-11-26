@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 class GameTrackerBot:
     def __init__(self):
         self.bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        
+        if not self.bot_token:
+            print("ERROR: TELEGRAM_BOT_TOKEN not found in environment variables!")
+            print("Please set TELEGRAM_BOT_TOKEN in Railway Settings → Variables")
+            return
+            
         self.db = Database()
         self.parser = GameParser()
         self.scheduler = GameScheduler(self.db, self.bot_token)
@@ -291,6 +297,12 @@ if __name__ == '__main__':
     # Инициализация базы данных
     import asyncio
     bot = GameTrackerBot()
+    
+    # Проверка наличия токена
+    if not bot.bot_token:
+        print("Bot token not found. Exiting...")
+        exit(1)
+    
     asyncio.get_event_loop().run_until_complete(bot.db.init_db())
     
     # Запуск бота
