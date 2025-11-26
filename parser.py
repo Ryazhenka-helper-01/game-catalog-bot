@@ -415,10 +415,10 @@ class GameParser:
         return "N/A"
     
     def _extract_genres_from_page(self, soup, game_url: str) -> List[str]:
-        """Точное извлечение жанров из информации об игре"""
+        """Максимально полное извлечение ВСЕХ жанров из информации об игре"""
         genres = []
         
-        # 1. Ищем структурированные данные о жанрах
+        # 1. Ищем структурированные данные о жанрах (расширенный список)
         genre_patterns = [
             # Метаданные и schema.org
             '[itemprop="genre"]',
@@ -432,6 +432,8 @@ class GameParser:
             '.tags',
             '.game-tag',
             '.game-tags',
+            '.label',
+            '.labels',
             
             # Информационные блоки
             '.game-info .genre',
@@ -440,24 +442,46 @@ class GameParser:
             '.details .categories',
             '.specs .genre',
             '.specs .categories',
+            '.info .genre',
+            '.info .categories',
+            '.meta .genre',
+            '.meta .categories',
             
             # Таблицы с информацией
             'table td:contains("Жанр") + td',
             'table td:contains("Genre") + td',
+            'table td:contains("Категория") + td',
+            'table td:contains("Category") + td',
+            'table td:contains("Тип") + td',
+            'table td:contains("Type") + td',
             'tr td:contains("Жанр")',
             'tr td:contains("Genre")',
+            'tr td:contains("Категория")',
+            'tr td:contains("Category")',
             
             # Списки характеристик
             '.info-list .genre',
             '.info-list .categories',
             '.characteristics .genre',
             '.characteristics .categories',
+            '.features .genre',
+            '.features .categories',
             
             # Конкретные селекторы для asst2game.ru
             '.entry-meta .genre',
             '.post-meta .genre',
             '.game-meta .genre',
             '.meta-info .genre',
+            '.post-info .genre',
+            '.article-meta .genre',
+            
+            # Дополнительные возможные селекторы
+            '.game-details .genre',
+            '.product-info .genre',
+            '.item-info .genre',
+            '.content-info .genre',
+            '.description .genre',
+            '.summary .genre',
         ]
         
         for pattern in genre_patterns:
@@ -466,11 +490,11 @@ class GameParser:
                 for elem in elements:
                     text = clean_text(elem.get_text())
                     if text and len(text) > 2:
-                        # Разделяем запятыми, слэшами и другими разделителями
-                        genre_parts = re.split(r'[,;\/\|&]', text)
+                        # Разделяем разными разделителями
+                        genre_parts = re.split(r'[,;\/\|&\-\+\(\)]', text)
                         for part in genre_parts:
                             genre = clean_text(part)
-                            if genre and len(genre) > 2 and len(genre) < 30:
+                            if genre and len(genre) > 2 and len(genre) < 50:
                                 # Очищаем от лишних слов
                                 genre = self._clean_genre_name(genre)
                                 if genre and genre not in genres:
@@ -484,51 +508,223 @@ class GameParser:
                 logger.debug(f"Error with pattern '{pattern}': {e}")
                 continue
         
-        # 2. Если не нашли, ищем по текстовым меткам
+        # 2. Расширенный поиск по текстовым меткам
         if not genres:
             text_patterns = [
-                r'Жанр[:\s]+([^\n\r,;]+)',
-                r'Genre[:\s]+([^\n\r,;]+)',
-                r'Категория[:\s]+([^\n\r,;]+)',
-                r'Category[:\s]+([^\n\r,;]+)',
-                r'Тип[:\s]+([^\n\r,;]+)',
-                r'Type[:\s]+([^\n\r,;]+)',
+                r'Жанр[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
+                r'Genre[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
+                r'Категория[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
+                r'Category[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
+                r'Тип[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
+                r'Type[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
+                r'Стиль[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
+                r'Style[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
             ]
             
             page_text = soup.get_text()
             for pattern in text_patterns:
                 matches = re.findall(pattern, page_text, re.IGNORECASE)
                 for match in matches:
-                    genre = clean_text(match)
-                    if genre and len(genre) > 2:
-                        genre = self._clean_genre_name(genre)
-                        if genre and genre not in genres:
-                            genres.append(genre)
+                    # Разделяем найденный текст на отдельные жанры
+                    genre_parts = re.split(r'[,;\/\|&\s]+', match)
+                    for part in genre_parts:
+                        genre = clean_text(part)
+                        if genre and len(genre) > 2:
+                            genre = self._clean_genre_name(genre)
+                            if genre and genre not in genres:
+                                genres.append(genre)
                 
                 if genres:
                     break
         
-        # 3. Анализ URL для подсказок (если в URL есть жанр)
+        # 3. Поиск в заголовках и подзаголовках
+        if not genres:
+            headers = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+            for header in headers:
+                text = clean_text(header.get_text())
+                # Ищем слова-жанры в заголовках
+                genre_from_header = self._extract_genres_from_text(text)
+                for genre in genre_from_header:
+                    if genre not in genres:
+                        genres.append(genre)
+        
+        # 4. Поиск в описании и контенте
+        if not genres:
+            content_selectors = [
+                '.description', '.content', '.summary', '.about',
+                '.game-description', '.post-content', '.entry-content',
+                'article p', '.details p', '.info p'
+            ]
+            
+            for selector in content_selectors:
+                elements = soup.select(selector)
+                for elem in elements:
+                    text = clean_text(elem.get_text())
+                    if len(text) > 50:  # Только осмысленные тексты
+                        genre_from_text = self._extract_genres_from_text(text)
+                        for genre in genre_from_text:
+                            if genre not in genres:
+                                genres.append(genre)
+                
+                if genres:
+                    break
+        
+        # 5. Анализ URL для подсказок (если в URL есть жанр)
         if not genres:
             url_genre = self._extract_genre_from_url(game_url)
             if url_genre:
                 genres.append(url_genre)
         
-        # 4. Ищем в заголовках и описаниях специфичные слова
+        # 6. Ищем в классах и атрибутах элементов
         if not genres:
-            title_elem = soup.find('h1') or soup.find('title')
-            if title_elem:
-                title_text = clean_text(title_elem.get_text()).lower()
+            all_elements = soup.find_all(True)
+            for elem in all_elements:
+                # Проверяем классы
+                if elem.get('class'):
+                    class_text = ' '.join(elem.get('class'))
+                    genre_from_class = self._extract_genres_from_text(class_text)
+                    for genre in genre_from_class:
+                        if genre not in genres:
+                            genres.append(genre)
                 
-                # Специфичные слова для визуальных новелл
-                if any(word in title_text for word in ['visual novel', 'новелла', 'novel']):
-                    genres.append('Визуальная новелла')
-                elif any(word in title_text for word in ['adventure', 'приключение']):
-                    genres.append('Приключение')
-                elif any(word in title_text for word in ['rpg', 'role-playing']):
-                    genres.append('RPG')
+                # Проверяем атрибуты
+                for attr in ['data-genre', 'data-category', 'data-type']:
+                    if elem.get(attr):
+                        genre_from_attr = self._extract_genres_from_text(elem.get(attr))
+                        for genre in genre_from_attr:
+                            if genre not in genres:
+                                genres.append(genre)
         
-        return genres[:5]  # Ограничиваем количество жанров
+        return genres[:10]  # Ограничиваем количество жанров до 10
+    
+    def _extract_genres_from_text(self, text: str) -> List[str]:
+        """Извлечение жанров из любого текста с расширенным словарем"""
+        if not text:
+            return []
+        
+        text_lower = text.lower()
+        found_genres = []
+        
+        # Расширенный словарь жанров на русском и английском
+        genre_dict = {
+            # Action
+            'action': 'Action', 'экшен': 'Action', 'действие': 'Action', 'боевик': 'Action',
+            
+            # Adventure
+            'adventure': 'Adventure', 'приключение': 'Adventure', 'приключения': 'Adventure',
+            
+            # RPG
+            'rpg': 'RPG', 'role-playing': 'RPG', 'рпг': 'RPG', 'ролевая': 'RPG', 'ролевые': 'RPG',
+            
+            # Strategy
+            'strategy': 'Strategy', 'стратегия': 'Strategy', 'стратегии': 'Strategy',
+            
+            # Puzzle
+            'puzzle': 'Puzzle', 'головоломка': 'Puzzle', 'головоломки': 'Puzzle', 'пазл': 'Puzzle',
+            
+            # Simulation
+            'simulation': 'Simulation', 'симулятор': 'Simulation', 'симуляторы': 'Simulation', 'сим': 'Simulation',
+            
+            # Sports
+            'sports': 'Sports', 'спорт': 'Sports', 'спортивный': 'Sports', 'спортивные': 'Sports',
+            
+            # Racing
+            'racing': 'Racing', 'гонки': 'Racing', 'гоночный': 'Racing', 'гоночные': 'Racing',
+            
+            # Fighting
+            'fighting': 'Fighting', 'драки': 'Fighting', 'бои': 'Fighting', 'файтинг': 'Fighting',
+            
+            # Shooter
+            'shooter': 'Shooter', 'шутер': 'Shooter', 'стрелялка': 'Shooter', 'стрелялки': 'Shooter',
+            
+            # Horror
+            'horror': 'Horror', 'хоррор': 'Horror', 'ужасы': 'Horror', 'страшный': 'Horror',
+            
+            # Platformer
+            'platformer': 'Platformer', 'платформер': 'Platformer', 'платформенная': 'Platformer',
+            
+            # Visual Novel
+            'visual novel': 'Визуальная новелла', 'визуальная новелла': 'Визуальная новелла',
+            'visual': 'Визуальная новелла', 'новелла': 'Визуальная новелла',
+            
+            # Music/Rhythm
+            'music': 'Музыка', 'rhythm': 'Ритм', 'музыкальная': 'Музыка', 'ритмическая': 'Ритм',
+            
+            # Party
+            'party': 'Вечеринка', 'вечеринка': 'Вечеринка', 'мультиплеер': 'Мультиплеер',
+            
+            # Educational
+            'educational': 'Образовательная', 'образовательная': 'Образовательная', 'обучение': 'Образовательная',
+            
+            # Family
+            'family': 'Семейная', 'семейная': 'Семейная', 'для семьи': 'Семейная',
+            
+            # Casual
+            'casual': 'Казуальная', 'казуальная': 'Казуальная', 'случайная': 'Казуальная',
+            
+            # Indie
+            'indie': 'Инди', 'независимая': 'Инди',
+            
+            # Arcade
+            'arcade': 'Аркада', 'аркада': 'Аркада', 'аркадная': 'Аркада',
+            
+            # Board Game
+            'board game': 'Настольная', 'настольная': 'Настольная', 'настольные': 'Настольная',
+            
+            # Card Game
+            'card game': 'Карточная', 'карточная': 'Карточная', 'карточные': 'Карточная',
+            
+            # Turn-based
+            'turn-based': 'Пошаговая', 'пошаговая': 'Пошаговая', 'пошаговые': 'Пошаговая',
+            
+            # Real-time
+            'real-time': 'Реального времени', 'реального времени': 'Реального времени',
+            
+            # Open World
+            'open world': 'Открытый мир', 'открытый мир': 'Открытый мир',
+            
+            # Metroidvania
+            'metroidvania': 'Метроидвания', 'метроидвания': 'Метроидвания',
+            
+            # Roguelike
+            'roguelike': 'Рогалик', 'рогалик': 'Рогалик', 'рогалики': 'Рогалик',
+            
+            # Survival
+            'survival': 'Выживание', 'выживание': 'Выживание',
+            
+            # Stealth
+            'stealth': 'Стелс', 'стелс': 'Стелс', 'скрытая': 'Стелс',
+            
+            # Multiplayer
+            'multiplayer': 'Мультиплеер', 'мультиплеер': 'Мультиплеер',
+            
+            # Single-player
+            'single-player': 'Одиночная', 'одиночная': 'Одиночная', 'синглплеер': 'Одиночная',
+            
+            # Co-op
+            'co-op': 'Кооператив', 'кооператив': 'Кооператив', 'кооп': 'Кооператив',
+            
+            # Online
+            'online': 'Онлайн', 'онлайн': 'Онлайн',
+            
+            # Additional genres
+            'mmo': 'MMO', 'mmorpg': 'MMORPG', 'moba': 'MOBA',
+            'tower defense': 'Защита башни', 'защита башни': 'Защита башни',
+            'hidden object': 'Поиск предметов', 'поиск предметов': 'Поиск предметов',
+            'match-3': 'Match-3', 'три в ряд': 'Match-3',
+            'time management': 'Управление временем', 'управление временем': 'Управление временем',
+            'word': 'Словесная', 'словесная': 'Словесная',
+            'quiz': 'Викторина', 'викторина': 'Викторина',
+            'trivia': 'Тривия', 'тривия': 'Тривия',
+        }
+        
+        # Ищем совпадения в тексте
+        for keyword, genre in genre_dict.items():
+            if keyword in text_lower:
+                if genre not in found_genres:
+                    found_genres.append(genre)
+        
+        return found_genres
     
     def _clean_genre_name(self, genre: str) -> str:
         """Очищает название жанра от лишних слов"""
