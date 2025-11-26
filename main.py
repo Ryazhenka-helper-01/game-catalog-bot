@@ -55,18 +55,36 @@ class GameTrackerBot:
         await update.message.reply_text(welcome_text, parse_mode='Markdown')
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Показать список всех доступных жанров"""
-        genres = await self.db.get_all_genres()
-        if not genres:
-            await update.message.reply_text("Жанры пока не загружены. Попробуйте позже.")
-            return
+        """Показать все доступные жанры в виде кнопок"""
+        try:
+            genres = await self.db.get_all_genres()
             
-        genres_text = "🎯 **Доступные жанры:**\n\n"
-        for i, genre in enumerate(genres, 1):
-            genres_text += f"• {genre}\n"
+            if not genres:
+                await update.message.reply_text("🎮 Жанры пока не загружены. Попробуйте позже.")
+                return
             
-        genres_text += "\n💡 *Напишите любой жанр из списка для поиска игр*"
-        await update.message.reply_text(genres_text, parse_mode='Markdown')
+            # Создаем кнопки для жанров
+            keyboard = []
+            for i, genre in enumerate(genres[:20]):  # Показываем первые 20 жанров
+                if genre and genre.strip():
+                    keyboard.append([InlineKeyboardButton(f"🎮 {genre}", callback_data=f"genre_{genre}")])
+            
+            # Добавляем кнопку "Показать еще" если жанров больше 20
+            if len(genres) > 20:
+                keyboard.append([InlineKeyboardButton("📋 Больше жанров", callback_data="more_genres")])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                "🎮 **Выберите жанр игр:**\n\n"
+                f"Найдено {len(genres)} жанров",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in genres_command: {e}")
+            await update.message.reply_text("❌ Ошибка при загрузке жанров")
     
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /search"""
@@ -118,7 +136,12 @@ class GameTrackerBot:
         
         data = query.data
         
-        if data.startswith('game_'):
+        if data.startswith('genre_'):
+            # Поиск игр по жанру из кнопки
+            genre = data.replace('genre_', '', 1)
+            await self.search_games_by_genre_callback(query, genre)
+            
+        elif data.startswith('game_'):
             # Показать информацию об игре
             game_id = int(data.split('_')[1])
             page = int(data.split('_')[2])
@@ -133,12 +156,79 @@ class GameTrackerBot:
         elif data.startswith('back_to_search'):
             # Возврат к поиску
             await self.handle_back_to_search(query)
+        elif data == 'back_to_genres':
+            # Возврат к списку жанров
+            await self.genres_command_callback(query)
         elif data.startswith('admin_'):
             # Админские команды
             await self.admin_commands.handle_admin_callback(update, context)
         elif data == 'admin_back':
             # Возврат в админское меню
             await self.admin_commands.admin_menu(update, context)
+    
+    async def genres_command_callback(self, query):
+        """Показать все доступные жанры в виде кнопок (callback версия)"""
+        try:
+            genres = await self.db.get_all_genres()
+            
+            if not genres:
+                await query.edit_message_text("🎮 Жанры пока не загружены. Попробуйте позже.")
+                return
+            
+            # Создаем кнопки для жанров
+            keyboard = []
+            for i, genre in enumerate(genres[:20]):  # Показываем первые 20 жанров
+                if genre and genre.strip():
+                    keyboard.append([InlineKeyboardButton(f"🎮 {genre}", callback_data=f"genre_{genre}")])
+            
+            # Добавляем кнопку "Показать еще" если жанров больше 20
+            if len(genres) > 20:
+                keyboard.append([InlineKeyboardButton("📋 Больше жанров", callback_data="more_genres")])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                "🎮 **Выберите жанр игр:**\n\n"
+                f"Найдено {len(genres)} жанров",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in genres_command_callback: {e}")
+            await query.edit_message_text("❌ Ошибка при загрузке жанров")
+    
+    async def search_games_by_genre_callback(self, query, genre: str):
+        """Поиск игр по жанру из кнопки"""
+        games = await self.db.get_games_by_genre(genre)
+        
+        if not games:
+            await query.edit_message_text(
+                f"🎮 Игры в жанре '{genre}' не найдены.\n\n"
+                "Попробуйте другой жанр или используйте /genres для просмотра всех жанров."
+            )
+            return
+        
+        # Создаем клавиатуру с первыми 5 играми
+        keyboard = []
+        for game in games[:5]:
+            keyboard.append([InlineKeyboardButton(game['title'], callback_data=f"game_{game['id']}_0")])
+        
+        # Добавляем кнопку "Еще" если есть еще игры
+        if len(games) > 5:
+            keyboard.append([InlineKeyboardButton("➡️ Еще", callback_data=f"more_{genre}_5")])
+        
+        # Кнопка "Назад к жанрам"
+        keyboard.append([InlineKeyboardButton("🔙 Назад к жанрам", callback_data="back_to_genres")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"🎮 **Найдено игр в жанре '{genre}': {len(games)}**\n\n"
+            "Выберите игру для подробной информации:",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
     
     async def show_game_details(self, query, game_id: int, page: int = 0):
         """Показать детальную информацию об игре"""

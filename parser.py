@@ -324,7 +324,7 @@ class GameParser:
         return game
     
     async def get_all_games(self) -> List[Dict]:
-        """Получить все игры с сайта (все страницы)"""
+        """Получить все игры с сайта (все страницы) с детальной информацией"""
         async with self:
             all_games = []
             page = 1
@@ -355,7 +355,29 @@ class GameParser:
                     print(f"No games found on page {page}, stopping pagination")
                     break
                 
-                all_games.extend(games)
+                # Получаем детальную информацию для каждой игры
+                detailed_games = []
+                for i, game in enumerate(games):
+                    try:
+                        print(f"Getting details for game {i+1}/{len(games)}: {game.get('title', 'Unknown')}")
+                        if game.get('url') and game['url'] != self.base_url:
+                            detailed_game = await self.parse_game_details(game['url'])
+                            if detailed_game:
+                                detailed_games.append(detailed_game)
+                            else:
+                                detailed_games.append(game)
+                        else:
+                            detailed_games.append(game)
+                        
+                        # Небольшая задержка между запросами
+                        if i < len(games) - 1:
+                            await asyncio.sleep(0.5)
+                            
+                    except Exception as e:
+                        logger.error(f"Error getting details for game {game.get('title', 'Unknown')}: {e}")
+                        detailed_games.append(game)
+                
+                all_games.extend(detailed_games)
                 print(f"Found {len(games)} games on page {page}, total: {len(all_games)}")
                 
                 # Небольшая задержка между запросами
