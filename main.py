@@ -713,6 +713,9 @@ if __name__ == '__main__':
     import os
     import asyncio
     
+    # Импортируем функцию гарантированного исправления
+    from railway_database_fix import guaranteed_railway_fix
+    
     # Инициализация базы данных
     bot = GameTrackerBot()
     
@@ -730,86 +733,22 @@ if __name__ == '__main__':
         # Сначала проверим, есть ли игры в базе
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
-        if len(existing_games) < 500:  # Если игр меньше 500, агрессивно исправляем базу
-            print(f"Database has only {len(existing_games)} games. AGGRESSIVE FIX REQUIRED!")
+        if len(existing_games) < 500:  # Если игр меньше 500, ГАРАНТИРОВАННО исправляем базу
+            print(f"Database has only {len(existing_games)} games. GUARANTEED FIX REQUIRED!")
             
-            # Агрессивное исправление базы
+            # ГАРАНТИРОВАННОЕ исправление базы
             try:
-                import json
-                import os
+                # Выполняем гарантированное исправление
+                result = guaranteed_railway_fix()
                 
-                # Удаляем старую базу полностью
-                if os.path.exists('games.db'):
-                    os.remove('games.db')
-                    print("Removed old database file")
-                
-                # Ищем доступный файл с играми
-                games_file = None
-                for file in ['all_switch_games_with_descriptions.json', 'all_switch_games_complete.json']:
-                    if os.path.exists(file):
-                        games_file = file
-                        print(f"Using file: {file}")
-                        break
-                
-                if not games_file:
-                    print("ERROR: No games file found!")
+                if result:
+                    print("GUARANTEED FIX SUCCESSFUL!")
+                else:
+                    print("GUARANTEED FIX FAILED!")
                     exit(1)
-                
-                with open(games_file, 'r', encoding='utf-8') as f:
-                    all_games = json.load(f)
-                
-                # Создаем уникальные игры
-                unique_games = {}
-                for game in all_games:
-                    title = game['title']
-                    if title not in unique_games:
-                        unique_games[title] = game
-                
-                # Создаем новую базу данных
-                import sqlite3
-                conn = sqlite3.connect('games.db')
-                cursor = conn.cursor()
-                
-                # Создаем таблицу
-                cursor.execute('''
-                    CREATE TABLE games (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        title TEXT UNIQUE NOT NULL,
-                        url TEXT NOT NULL,
-                        genres TEXT DEFAULT '[]',
-                        description TEXT DEFAULT '',
-                        rating TEXT DEFAULT '',
-                        image_url TEXT DEFAULT '',
-                        screenshots TEXT DEFAULT '[]',
-                        release_date TEXT DEFAULT '',
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                ''')
-                
-                # Добавляем все игры
-                added_count = 0
-                for title, game in unique_games.items():
-                    try:
-                        url = game['url']
-                        genres = json.dumps(game['genres'], ensure_ascii=False) if game.get('genres') else '[]'
-                        description = game.get('description', '')
-                        
-                        cursor.execute('''
-                            INSERT INTO games (title, url, genres, description, rating, image_url, screenshots, release_date)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (title, url, genres, description, None, None, None, None))
-                        
-                        added_count += 1
-                    except Exception as e:
-                        print(f"Error adding {title}: {e}")
-                        continue
-                
-                conn.commit()
-                conn.close()
-                print(f"AGGRESSIVE FIX: {added_count} games added to new database")
-                
+                    
             except Exception as e:
-                print(f"Error in aggressive fix: {e}")
+                print(f"Error in guaranteed fix: {e}")
                 exit(1)
         
         else:
