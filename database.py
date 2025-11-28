@@ -229,28 +229,6 @@ class Database:
             row = await cursor.fetchone()
             return row[0] if row else 0
     
-    async def get_all_games(self, limit: int = 100, offset: int = 0) -> List[Dict]:
-        """Получить все игры"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute('''
-                SELECT * FROM games 
-                ORDER BY created_at DESC 
-                LIMIT ? OFFSET ?
-            ''', (limit, offset))
-            
-            rows = await cursor.fetchall()
-            games = []
-            
-            for row in rows:
-                import json
-                game = dict(row)
-                game['genres'] = json.loads(game['genres']) if game['genres'] else []
-                game['screenshots'] = json.loads(game['screenshots']) if game['screenshots'] else []
-                games.append(game)
-            
-            return games
-    
     async def search_games(self, query: str, limit: int = 10) -> List[Dict]:
         """Поиск игр по названию"""
         async with aiosqlite.connect(self.db_path) as db:
