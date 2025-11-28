@@ -415,117 +415,64 @@ class GameParser:
         return "N/A"
     
     def _extract_genres_from_page(self, soup, game_url: str) -> List[str]:
-        """Максимально полное извлечение ВСЕХ жанров из информации об игре"""
+        """Извлечение жанров из мета-тега itemprop="genre" - ПРИОРИТЕТНЫЙ МЕТОД"""
         genres = []
         
-        # 1. Ищем структурированные данные о жанрах (расширенный список)
-        genre_patterns = [
-            # Метаданные и schema.org
-            '[itemprop="genre"]',
-            '.genre',
-            '.genres', 
-            '.game-genre',
-            '.game-genres',
-            '.category',
-            '.categories',
-            '.tag',
-            '.tags',
-            '.game-tag',
-            '.game-tags',
-            '.label',
-            '.labels',
+        # 1. ПРИОРИТЕТ: Ищем мета-тег itemprop="genre"
+        meta_genre = soup.find('meta', attrs={'itemprop': 'genre'})
+        if meta_genre and meta_genre.get('content'):
+            content = meta_genre.get('content').strip()
+            logger.info(f"Found meta genre content: {content}")
             
-            # Информационные блоки
-            '.game-info .genre',
-            '.game-info .categories',
-            '.details .genre',
-            '.details .categories',
-            '.specs .genre',
-            '.specs .categories',
-            '.info .genre',
-            '.info .categories',
-            '.meta .genre',
-            '.meta .categories',
+            # Разделяем по запятым и очищаем
+            genre_parts = [part.strip() for part in content.split(',') if part.strip()]
+            for part in genre_parts:
+                genre = self._clean_genre_name(part)
+                if genre and genre not in genres:
+                    genres.append(genre)
             
-            # Таблицы с информацией
-            'table td:contains("Жанр") + td',
-            'table td:contains("Genre") + td',
-            'table td:contains("Категория") + td',
-            'table td:contains("Category") + td',
-            'table td:contains("Тип") + td',
-            'table td:contains("Type") + td',
-            'tr td:contains("Жанр")',
-            'tr td:contains("Genre")',
-            'tr td:contains("Категория")',
-            'tr td:contains("Category")',
-            
-            # Списки характеристик
-            '.info-list .genre',
-            '.info-list .categories',
-            '.characteristics .genre',
-            '.characteristics .categories',
-            '.features .genre',
-            '.features .categories',
-            
-            # Конкретные селекторы для asst2game.ru
-            '.entry-meta .genre',
-            '.post-meta .genre',
-            '.game-meta .genre',
-            '.meta-info .genre',
-            '.post-info .genre',
-            '.article-meta .genre',
-            
-            # Дополнительные возможные селекторы
-            '.game-details .genre',
-            '.product-info .genre',
-            '.item-info .genre',
-            '.content-info .genre',
-            '.description .genre',
-            '.summary .genre',
+            if genres:
+                logger.info(f"Extracted genres from meta tag: {genres}")
+                return genres[:10]  # Возвращаем найденные жанры
+        
+        # 2. Если мета-тег не найден, используем другие методы (запасные)
+        logger.info("Meta itemprop='genre' not found, using fallback methods")
+        
+        # Ищем другие мета-теги
+        fallback_patterns = [
+            {'tag': 'meta', 'attrs': {'name': 'genre'}},
+            {'tag': 'meta', 'attrs': {'property': 'genre'}},
+            {'tag': 'meta', 'attrs': {'name': 'keywords'}},
         ]
         
-        for pattern in genre_patterns:
-            try:
-                elements = soup.select(pattern)
-                for elem in elements:
-                    text = clean_text(elem.get_text())
-                    if text and len(text) > 2:
-                        # Разделяем разными разделителями
-                        genre_parts = re.split(r'[,;\/\|&\-\+\(\)]', text)
-                        for part in genre_parts:
-                            genre = clean_text(part)
-                            if genre and len(genre) > 2 and len(genre) < 50:
-                                # Очищаем от лишних слов
-                                genre = self._clean_genre_name(genre)
-                                if genre and genre not in genres:
-                                    genres.append(genre)
+        for pattern in fallback_patterns:
+            meta_tag = soup.find(pattern['tag'], attrs=pattern['attrs'])
+            if meta_tag and meta_tag.get('content'):
+                content = meta_tag.get('content').strip()
+                genre_parts = [part.strip() for part in content.split(',') if part.strip()]
+                for part in genre_parts:
+                    genre = self._clean_genre_name(part)
+                    if genre and genre not in genres:
+                        genres.append(genre)
                 
                 if genres:
-                    logger.debug(f"Found genres with pattern '{pattern}': {genres}")
+                    logger.info(f"Found genres in fallback meta tag: {genres}")
                     break
-                    
-            except Exception as e:
-                logger.debug(f"Error with pattern '{pattern}': {e}")
-                continue
         
-        # 2. Расширенный поиск по текстовым меткам
+        # 3. Если все еще нет жанров, ищем в тексте (последний вариант)
         if not genres:
+            logger.info("No genres in meta tags, searching in text")
             text_patterns = [
                 r'Жанр[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
                 r'Genre[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
                 r'Категория[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
                 r'Category[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
-                r'Тип[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
-                r'Type[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
-                r'Стиль[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
-                r'Style[:\s]+([^\n\r,;]+(?:[,;\/\|&\s]+[^\n\r,;]+)*)',
             ]
             
             page_text = soup.get_text()
             for pattern in text_patterns:
                 matches = re.findall(pattern, page_text, re.IGNORECASE)
                 for match in matches:
-                    # Разделяем найденный текст на отдельные жанры
                     genre_parts = re.split(r'[,;\/\|&\s]+', match)
                     for part in genre_parts:
                         genre = clean_text(part)
@@ -537,65 +484,14 @@ class GameParser:
                 if genres:
                     break
         
-        # 3. Поиск в заголовках и подзаголовках
-        if not genres:
-            headers = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            for header in headers:
-                text = clean_text(header.get_text())
-                # Ищем слова-жанры в заголовках
-                genre_from_header = self._extract_genres_from_text(text)
-                for genre in genre_from_header:
-                    if genre not in genres:
-                        genres.append(genre)
-        
-        # 4. Поиск в описании и контенте
-        if not genres:
-            content_selectors = [
-                '.description', '.content', '.summary', '.about',
-                '.game-description', '.post-content', '.entry-content',
-                'article p', '.details p', '.info p'
-            ]
-            
-            for selector in content_selectors:
-                elements = soup.select(selector)
-                for elem in elements:
-                    text = clean_text(elem.get_text())
-                    if len(text) > 50:  # Только осмысленные тексты
-                        genre_from_text = self._extract_genres_from_text(text)
-                        for genre in genre_from_text:
-                            if genre not in genres:
-                                genres.append(genre)
-                
-                if genres:
-                    break
-        
-        # 5. Анализ URL для подсказок (если в URL есть жанр)
+        # 4. Анализ URL для подсказок
         if not genres:
             url_genre = self._extract_genre_from_url(game_url)
             if url_genre:
                 genres.append(url_genre)
         
-        # 6. Ищем в классах и атрибутах элементов
-        if not genres:
-            all_elements = soup.find_all(True)
-            for elem in all_elements:
-                # Проверяем классы
-                if elem.get('class'):
-                    class_text = ' '.join(elem.get('class'))
-                    genre_from_class = self._extract_genres_from_text(class_text)
-                    for genre in genre_from_class:
-                        if genre not in genres:
-                            genres.append(genre)
-                
-                # Проверяем атрибуты
-                for attr in ['data-genre', 'data-category', 'data-type']:
-                    if elem.get(attr):
-                        genre_from_attr = self._extract_genres_from_text(elem.get(attr))
-                        for genre in genre_from_attr:
-                            if genre not in genres:
-                                genres.append(genre)
-        
-        return genres[:10]  # Ограничиваем количество жанров до 10
+        logger.info(f"Final extracted genres: {genres}")
+        return genres[:10]
     
     def _extract_genres_from_text(self, text: str) -> List[str]:
         """Извлечение жанров из любого текста с расширенным словарем"""
