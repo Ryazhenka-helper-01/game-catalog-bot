@@ -35,11 +35,11 @@ class GameTrackerBot:
         """Обработчик команды /start"""
         try:
             welcome_text = f"""
-🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
+**Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
-📱 **Версия:** beta-1.0.9
-🎯 **Игр в базе:** 510 Nintendo Switch
-🏷️ **Жанров:** 34 уникальных
+**Версия:** beta-1.0.9
+**Игр в базе:** 510 Nintendo Switch
+**Жанров:** 34 уникальных
 
 Я помогу вам найти игры по жанрам. Просто напишите название жанра, например:
 - Экшен
@@ -48,28 +48,28 @@ class GameTrackerBot:
 - Стратегия
 - Гонки
 
-📋 **ВСЕ КОМАНДЫ БОТА:**
+**ВСЕ КОМАНДЫ БОТА:**
 
-🚀 **Основные команды:**
+**Основные команды:**
 /start - Показать это приветствие
 /genres - Показать все жанры кнопками
 /games - Показать все игры (пагинация)
 /search [жанр] - Найти игры по жанру
 
-🔍 **Примеры поиска:**
+**Примеры поиска:**
 /search Экшен - 204 игры
 /search RPG - 106 игр
 /search Приключение - 105 игр
 /search Стратегия - 67 игр
 
-⚙️ **Административные команды:**
+**Административные команды:**
 /update_genres - Обновить жанры для всех игр
 /stats - Показать статистику бота
 /help - Помощь и примеры
 
-💡 **Совет:** Просто напишите любой жанр (например "Экшен") и я покажу все игры этого жанра!
+**Совет:** Просто напишите любой жанр (например "Экшен") и я покажу все игры этого жанра!
 
-🎮 Начните поиск прямо сейчас! 🚀
+Начните поиск прямо сейчас!
             """
             await update.message.reply_text(welcome_text, parse_mode='Markdown')
             logger.info(f"User {update.effective_user.id} started the bot")
@@ -721,19 +721,65 @@ if __name__ == '__main__':
         # Сначала проверим, есть ли игры в базе
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
-        if len(existing_games) == 0:
-            # Если база пуста, парсим все игры с деталями
-            games = asyncio.get_event_loop().run_until_complete(bot.parser.get_all_games())
-            if games:
-                print(f"Found {len(games)} games from asst2game.ru")
+        if len(existing_games) < 500:  # Если игр меньше 500, исправляем базу
+            print(f"Database has only {len(existing_games)} games. Fixing with complete dataset...")
+            
+            # Загружаем полный набор игр
+            try:
+                import json
+                with open('all_switch_games_complete.json', 'r', encoding='utf-8') as f:
+                    all_games = json.load(f)
+                
+                # Создаем уникальные игры
+                unique_games = {}
+                for game in all_games:
+                    title = game['title']
+                    if title not in unique_games:
+                        unique_games[title] = game
+                
+                # Очищаем базу и добавляем все игры
+                import sqlite3
+                conn = sqlite3.connect('games.db')
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM games")
+                conn.commit()
+                
                 added_count = 0
-                for game in games:
-                    success = asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
-                    if success:
+                for title, game in unique_games.items():
+                    try:
+                        import json
+                        url = game['url']
+                        genres = json.dumps(game['genres'], ensure_ascii=False) if game['genres'] else '[]'
+                        
+                        cursor.execute('''
+                            INSERT INTO games (title, url, genres, description, rating, image_url, screenshots, release_date)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (title, url, genres, None, None, None, None, None))
+                        
                         added_count += 1
-                print(f"Successfully added {added_count} games to database")
+                    except Exception as e:
+                        print(f"Error adding {title}: {e}")
+                        continue
+                
+                conn.commit()
+                conn.close()
+                print(f"Fixed database: {added_count} games added")
+                
+            except FileNotFoundError:
+                print("all_switch_games_complete.json not found, using parser...")
+                # Если файла нет, используем парсер
+                games = asyncio.get_event_loop().run_until_complete(bot.parser.get_all_games())
+                if games:
+                    print(f"Found {len(games)} games from asst2game.ru")
+                    added_count = 0
+                    for game in games:
+                        success = asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
+                        if success:
+                            added_count += 1
+                    print(f"Successfully added {added_count} games to database")
+        
         else:
-            # Если игры уже есть, обновляем их с деталями
+            # Если игр достаточно, обновляем детали
             print(f"Updating {len(existing_games)} existing games with details...")
             updated_count = 0
             
