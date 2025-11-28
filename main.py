@@ -34,7 +34,7 @@ class GameTrackerBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         try:
-            welcome_text = f"""**Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
+            welcome_text = """**Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
 **Версия:** beta-1.1.0
 **Игр в базе:** 510 Nintendo Switch
@@ -730,12 +730,26 @@ if __name__ == '__main__':
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
         if len(existing_games) < 500:  # Если игр меньше 500, исправляем базу
-            print(f"Database has only {len(existing_games)} games. Fixing with complete dataset...")
+            print(f"Database has only {len(existing_games)} games. Force fixing with complete dataset...")
             
-            # Загружаем полный набор игр с описаниями
+            # Принудительное исправление базы
             try:
                 import json
-                with open('all_switch_games_with_descriptions.json', 'r', encoding='utf-8') as f:
+                import os
+                
+                # Ищем доступный файл с играми
+                games_file = None
+                for file in ['all_switch_games_with_descriptions.json', 'all_switch_games_complete.json']:
+                    if os.path.exists(file):
+                        games_file = file
+                        print(f"Using file: {file}")
+                        break
+                
+                if not games_file:
+                    print("ERROR: No games file found!")
+                    return
+                
+                with open(games_file, 'r', encoding='utf-8') as f:
                     all_games = json.load(f)
                 
                 # Создаем уникальные игры
@@ -772,20 +786,11 @@ if __name__ == '__main__':
                 
                 conn.commit()
                 conn.close()
-                print(f"Fixed database: {added_count} games added")
+                print(f"Force fixed database: {added_count} games added")
                 
-            except FileNotFoundError:
-                print("all_switch_games_complete.json not found, using parser...")
-                # Если файла нет, используем парсер
-                games = asyncio.get_event_loop().run_until_complete(bot.parser.get_all_games())
-                if games:
-                    print(f"Found {len(games)} games from asst2game.ru")
-                    added_count = 0
-                    for game in games:
-                        success = asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
-                        if success:
-                            added_count += 1
-                    print(f"Successfully added {added_count} games to database")
+            except Exception as e:
+                print(f"Error in force fix: {e}")
+                return
         
         else:
             # Если игр достаточно, обновляем детали
