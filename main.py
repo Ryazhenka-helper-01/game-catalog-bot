@@ -34,7 +34,7 @@ class GameTrackerBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         try:
-            welcome_text = """
+            welcome_text = f"""
 🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
 📱 **Версия:** beta-1.0.5
@@ -62,7 +62,7 @@ class GameTrackerBot:
             logger.error(f"Error in start_command: {e}")
             await safe_execute(
                 update.message.reply_text,
-                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.5"
+                f"🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.5"
             )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
