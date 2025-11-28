@@ -376,6 +376,15 @@ class GameParser:
     
     def _extract_description(self, soup) -> str:
         """Извлечение описания"""
+        
+        # 1. Приоритет: meta itemprop="description" content="..."
+        meta_desc = soup.find('meta', attrs={'itemprop': 'description'})
+        if meta_desc and meta_desc.get('content'):
+            description = clean_text(meta_desc.get('content'))
+            if len(description) > 20:  # Только осмысленные описания
+                return description[:1000]
+        
+        # 2. Стандартные селекторы описания
         selectors = [
             '.description', '.game-description', '.summary', '.about',
             '.post-content', '.entry-content', '.content', 'article p',
@@ -389,7 +398,7 @@ class GameParser:
                 if len(text) > 50:  # Только осмысленные описания
                     return text[:1000]
         
-        # Запасной вариант - первый абзац
+        # 3. Запасной вариант - первый абзац
         paragraphs = soup.find_all('p')
         for p in paragraphs:
             text = clean_text(p.get_text())
