@@ -34,11 +34,11 @@ class GameTrackerBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         try:
-            welcome_text = """**Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
+            welcome_text = """Game Tracker Bot - Ваш гид по играм Nintendo Switch!
 
-**Версия:** beta-1.1.0
-**Игр в базе:** 510 Nintendo Switch
-**Жанров:** 34 уникальных
+Версия: beta-1.1.0
+Игр в базе: 510 Nintendo Switch
+Жанров: 34 уникальных
 
 Я помогу вам найти игры по жанрам. Просто напишите название жанра, например:
 - Экшен
@@ -47,28 +47,28 @@ class GameTrackerBot:
 - Стратегия
 - Гонки
 
-**ДОСТУПНЫЕ КОМАНДЫ:**
+ДОСТУПНЫЕ КОМАНДЫ:
 
-**Основные команды:**
+Основные команды:
 /start - Показать это приветствие и все команды
 /genres - Показать все жанры интерактивными кнопками
 /games - Показать все игры с пагинацией по 5 игр
 /search [жанр] - Поиск игр по конкретному жанру
 
-**Примеры поиска:**
+Примеры поиска:
 /search Экшен - Найти все экшен-игры (204 игры)
 /search RPG - Найти все RPG игры (106 игр)
 /search Приключение - Найти все приключения (105 игр)
 /search Стратегия - Найти все стратегии (67 игр)
 
-**Информационные команды:**
+Информационные команды:
 /help - Подробная помощь с примерами использования
 /stats - Показать актуальную статистику бота
 
-**Административные команды:**
+Административные команды:
 /update_genres - Обновить жанры для всех игр в базе
 
-**Текстовые команды (без слэша):**
+Текстовые команды (без слэша):
 Просто напишите любой жанр текстом:
 - "Экшен" - покажет 204 игры
 - "RPG" - покажет 106 игр
@@ -76,17 +76,18 @@ class GameTrackerBot:
 - "Стратегия" - покажет 67 игр
 - "Гонки" - покажет 53 игры
 
-**Совет:** Используйте кнопки в команде /genres для быстрого выбора жанра!
+Совет: Используйте кнопки в команде /genres для быстрого выбора жанра!
 
 Начните поиск прямо сейчас! Напишите любой жанр или используйте команду /genres"""
-            await update.message.reply_text(welcome_text, parse_mode='Markdown')
+            
+            await update.message.reply_text(welcome_text)
             logger.info(f"User {update.effective_user.id} started the bot")
             
         except Exception as e:
             logger.error(f"Error in start_command: {e}")
             await safe_execute(
                 update.message.reply_text,
-                f"🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.8"
+                "Game Tracker Bot - Ваш гид по играм Nintendo Switch! Версия: beta-1.1.0"
             )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -729,13 +730,18 @@ if __name__ == '__main__':
         # Сначала проверим, есть ли игры в базе
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
-        if len(existing_games) < 500:  # Если игр меньше 500, исправляем базу
-            print(f"Database has only {len(existing_games)} games. Force fixing with complete dataset...")
+        if len(existing_games) < 500:  # Если игр меньше 500, агрессивно исправляем базу
+            print(f"Database has only {len(existing_games)} games. AGGRESSIVE FIX REQUIRED!")
             
-            # Принудительное исправление базы
+            # Агрессивное исправление базы
             try:
                 import json
                 import os
+                
+                # Удаляем старую базу полностью
+                if os.path.exists('games.db'):
+                    os.remove('games.db')
+                    print("Removed old database file")
                 
                 # Ищем доступный файл с играми
                 games_file = None
@@ -759,19 +765,33 @@ if __name__ == '__main__':
                     if title not in unique_games:
                         unique_games[title] = game
                 
-                # Очищаем базу и добавляем все игры
+                # Создаем новую базу данных
                 import sqlite3
                 conn = sqlite3.connect('games.db')
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM games")
-                conn.commit()
                 
+                # Создаем таблицу
+                cursor.execute('''
+                    CREATE TABLE games (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT UNIQUE NOT NULL,
+                        url TEXT NOT NULL,
+                        genres TEXT DEFAULT '[]',
+                        description TEXT DEFAULT '',
+                        rating TEXT DEFAULT '',
+                        image_url TEXT DEFAULT '',
+                        screenshots TEXT DEFAULT '[]',
+                        release_date TEXT DEFAULT '',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
+                # Добавляем все игры
                 added_count = 0
                 for title, game in unique_games.items():
                     try:
-                        import json
                         url = game['url']
-                        genres = json.dumps(game['genres'], ensure_ascii=False) if game['genres'] else '[]'
+                        genres = json.dumps(game['genres'], ensure_ascii=False) if game.get('genres') else '[]'
                         description = game.get('description', '')
                         
                         cursor.execute('''
@@ -786,10 +806,10 @@ if __name__ == '__main__':
                 
                 conn.commit()
                 conn.close()
-                print(f"Force fixed database: {added_count} games added")
+                print(f"AGGRESSIVE FIX: {added_count} games added to new database")
                 
             except Exception as e:
-                print(f"Error in force fix: {e}")
+                print(f"Error in aggressive fix: {e}")
                 exit(1)
         
         else:
