@@ -747,7 +747,7 @@ if __name__ == '__main__':
                 
                 if not games_file:
                     print("ERROR: No games file found!")
-                    return
+                    exit(1)
                 
                 with open(games_file, 'r', encoding='utf-8') as f:
                     all_games = json.load(f)
@@ -790,7 +790,7 @@ if __name__ == '__main__':
                 
             except Exception as e:
                 print(f"Error in force fix: {e}")
-                return
+                exit(1)
         
         else:
             # Если игр достаточно, обновляем детали
