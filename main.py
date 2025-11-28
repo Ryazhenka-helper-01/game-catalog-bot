@@ -34,8 +34,7 @@ class GameTrackerBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         try:
-            welcome_text = f"""
-**Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
+            welcome_text = f"""**Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
 **Версия:** beta-1.1.0
 **Игр в базе:** 510 Nintendo Switch
@@ -79,8 +78,7 @@ class GameTrackerBot:
 
 **Совет:** Используйте кнопки в команде /genres для быстрого выбора жанра!
 
-Начните поиск прямо сейчас! Напишите любой жанр или используйте команду /genres
-            """
+Начните поиск прямо сейчас! Напишите любой жанр или используйте команду /genres"""
             await update.message.reply_text(welcome_text, parse_mode='Markdown')
             logger.info(f"User {update.effective_user.id} started the bot")
             
@@ -734,10 +732,10 @@ if __name__ == '__main__':
         if len(existing_games) < 500:  # Если игр меньше 500, исправляем базу
             print(f"Database has only {len(existing_games)} games. Fixing with complete dataset...")
             
-            # Загружаем полный набор игр
+            # Загружаем полный набор игр с описаниями
             try:
                 import json
-                with open('all_switch_games_complete.json', 'r', encoding='utf-8') as f:
+                with open('all_switch_games_with_descriptions.json', 'r', encoding='utf-8') as f:
                     all_games = json.load(f)
                 
                 # Создаем уникальные игры
@@ -760,11 +758,12 @@ if __name__ == '__main__':
                         import json
                         url = game['url']
                         genres = json.dumps(game['genres'], ensure_ascii=False) if game['genres'] else '[]'
+                        description = game.get('description', '')
                         
                         cursor.execute('''
                             INSERT INTO games (title, url, genres, description, rating, image_url, screenshots, release_date)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (title, url, genres, None, None, None, None, None))
+                        ''', (title, url, genres, description, None, None, None, None))
                         
                         added_count += 1
                     except Exception as e:
