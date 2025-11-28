@@ -37,7 +37,7 @@ class GameTrackerBot:
             welcome_text = """
 🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
-📱 **Версия:** beta-1.0.4
+📱 **Версия:** beta-1.0.5
 
 Я помогу вам найти игры по жанрам. Просто напишите название жанра, например:
 - Action
@@ -50,6 +50,7 @@ class GameTrackerBot:
 /start - Показать это сообщение
 /genres - Список всех жанров
 /games - Список всех игр с описаниями
+/update_genres - Обновить жанры для всех игр
 /search [жанр] - Поиск игр по жанру
 
 Начните поиск прямо сейчас! 🚀
@@ -61,7 +62,7 @@ class GameTrackerBot:
             logger.error(f"Error in start_command: {e}")
             await safe_execute(
                 update.message.reply_text,
-                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.4"
+                "🎮 Game Tracker Bot - Ваш гид по играм Nintendo Switch! 📱 Версия: beta-1.0.5"
             )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -168,6 +169,82 @@ class GameTrackerBot:
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
+    
+    async def update_genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обновить жанры для всех игр из HTML кода"""
+        try:
+            await update.message.reply_text("🔄 Начинаю обновление жанров для всех игр...")
+            
+            games = await self.db.get_all_games()
+            if not games:
+                await update.message.reply_text("❌ Игры не найдены в базе данных.")
+                return
+            
+            await update.message.reply_text(f"📊 Найдено {len(games)} игр. Начинаю обработку...")
+            
+            updated_count = 0
+            failed_count = 0
+            
+            async with self.parser:
+                for i, game in enumerate(games):
+                    try:
+                        game_url = game.get('url')
+                        if not game_url:
+                            failed_count += 1
+                            continue
+                        
+                        # Парсим страницу игры заново с новым методом извлечения жанров
+                        updated_game = await self.parser.parse_game_details(game_url)
+                        
+                        if updated_game and updated_game.get('genres'):
+                            # Обновляем только жанры в существующей игре
+                            new_genres = updated_game.get('genres', [])
+                            old_genres = game.get('genres', [])
+                            
+                            if new_genres != old_genres:
+                                await self.db.update_game_genres(game['id'], new_genres)
+                                updated_count += 1
+                                
+                                # Показываем прогресс каждые 10 игр
+                                if (i + 1) % 10 == 0:
+                                    await update.message.reply_text(
+                                        f"📈 Обработано {i+1}/{len(games)} игр...\n"
+                                        f"✅ Обновлено: {updated_count}\n"
+                                        f"❌ Пропущено: {failed_count}"
+                                    )
+                            
+                            logger.info(f"Updated genres for {game['title']}: {new_genres}")
+                        else:
+                            failed_count += 1
+                            logger.warning(f"Failed to extract genres for {game['title']}")
+                        
+                        # Небольшая задержка чтобы не нагружать сайт
+                        if (i + 1) % 20 == 0:
+                            await asyncio.sleep(1)
+                    
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f"Error processing game {game.get('title', 'Unknown')}: {e}")
+                        continue
+            
+            # Финальное сообщение
+            await update.message.reply_text(
+                f"✅ **Обновление жанров завершено!**\n\n"
+                f"📊 **Статистика:**\n"
+                f"🎮 Всего игр: {len(games)}\n"
+                f"✅ Обновлено: {updated_count}\n"
+                f"❌ Пропущено: {failed_count}\n\n"
+                f"🎯 Теперь жанры извлечены из HTML кода каждой игры!\n"
+                f"Используйте /genres для просмотра обновленного списка.",
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in update_genres_command: {e}")
+            await safe_execute(
+                update.message.reply_text,
+                "❌ Ошибка при обновлении жанров. Попробуйте позже."
+            )
     
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /search"""
@@ -493,6 +570,7 @@ class GameTrackerBot:
         application.add_handler(CommandHandler("start", self.start_command))
         application.add_handler(CommandHandler("genres", self.genres_command))
         application.add_handler(CommandHandler("games", self.games_command))
+        application.add_handler(CommandHandler("update_genres", self.update_genres_command))
         application.add_handler(CommandHandler("search", self.search_command))
         
         # Добавление админских команд

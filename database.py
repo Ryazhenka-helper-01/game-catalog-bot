@@ -155,6 +155,28 @@ class Database:
                 logger.error(f"Error updating game: {e}")
                 return False
     
+    async def update_game_genres(self, game_id: int, new_genres: List[str]) -> bool:
+        """Обновить только жанры для игры"""
+        async with self._lock:
+            try:
+                async with aiosqlite.connect(self.db_path) as db:
+                    import json
+                    genres_json = json.dumps(new_genres, ensure_ascii=False)
+                    
+                    await db.execute(''''
+                        UPDATE games 
+                        SET genres = ?, updated_at = CURRENT_TIMESTAMP 
+                        WHERE id = ?
+                    ''', (genres_json, game_id))
+                    
+                    await db.commit()
+                    logger.info(f"Updated genres for game ID {game_id}: {new_genres}")
+                    return True
+                    
+            except Exception as e:
+                logger.error(f"Error updating game genres: {e}")
+                return False
+    
     async def get_games_by_genre(self, genre: str, limit: int = 5, offset: int = 0) -> List[Dict]:
         """Получить игры по жанру"""
         async with aiosqlite.connect(self.db_path) as db:
