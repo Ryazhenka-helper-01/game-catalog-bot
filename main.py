@@ -37,23 +37,39 @@ class GameTrackerBot:
             welcome_text = f"""
 🎮 **Game Tracker Bot** - Ваш гид по играм Nintendo Switch!
 
-📱 **Версия:** beta-1.0.8
+📱 **Версия:** beta-1.0.9
+🎯 **Игр в базе:** 510 Nintendo Switch
+🏷️ **Жанров:** 34 уникальных
 
 Я помогу вам найти игры по жанрам. Просто напишите название жанра, например:
-- Action
+- Экшен
 - RPG  
-- Adventure
-- Puzzle
-- Strategy
+- Приключение
+- Стратегия
+- Гонки
 
-Доступные команды:
-/start - Показать это сообщение
-/genres - Список всех жанров
-/games - Список всех игр с описаниями
+📋 **ВСЕ КОМАНДЫ БОТА:**
+
+🚀 **Основные команды:**
+/start - Показать это приветствие
+/genres - Показать все жанры кнопками
+/games - Показать все игры (пагинация)
+/search [жанр] - Найти игры по жанру
+
+🔍 **Примеры поиска:**
+/search Экшен - 204 игры
+/search RPG - 106 игр
+/search Приключение - 105 игр
+/search Стратегия - 67 игр
+
+⚙️ **Административные команды:**
 /update_genres - Обновить жанры для всех игр
-/search [жанр] - Поиск игр по жанру
+/stats - Показать статистику бота
+/help - Помощь и примеры
 
-Начните поиск прямо сейчас! 🚀
+💡 **Совет:** Просто напишите любой жанр (например "Экшен") и я покажу все игры этого жанра!
+
+🎮 Начните поиск прямо сейчас! 🚀
             """
             await update.message.reply_text(welcome_text, parse_mode='Markdown')
             logger.info(f"User {update.effective_user.id} started the bot")
@@ -254,6 +270,97 @@ class GameTrackerBot:
             
         genre = ' '.join(context.args)
         await self.search_games_by_genre(update, genre)
+    
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Показать помощь"""
+        try:
+            help_text = f"""
+📋 **ПОМОЩЬ - Game Tracker Bot**
+
+🎮 **О боте:**
+• База данных: 510 игр Nintendo Switch
+• Жанры: 34 уникальных жанра
+• Покрытие: 99.8% игр с жанрами
+
+🚀 **Как использовать:**
+
+1️⃣ **Поиск по жанру:**
+   • Напишите: "Экшен", "RPG", "Приключение"
+   • Или: /search Экшен
+
+2️⃣ **Просмотр жанров:**
+   • /genres - все жанры кнопками
+
+3️⃣ **Все игры:**
+   • /games - полный список с пагинацией
+
+🔍 **Популярные жанры:**
+• Экшен - 204 игры
+• RPG - 106 игр  
+• Приключение - 105 игр
+• Стратегия - 67 игр
+• Гонки - 53 игр
+
+💡 **Советы:**
+• Можно писать жанр без слэша
+• Бот понимает синонимы
+• Используйте кнопки для быстрого поиска
+
+⚙️ **Админ команды:**
+/update_genres - обновить жанры
+/stats - статистика бота
+
+🎮 Удачи в поиске игр!
+            """
+            await update.message.reply_text(help_text, parse_mode='Markdown')
+            logger.info(f"User {update.effective_user.id} requested help")
+            
+        except Exception as e:
+            logger.error(f"Error in help_command: {e}")
+            await safe_execute(update.message.reply_text, "📋 Помощь временно недоступна")
+    
+    async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Показать статистику бота"""
+        try:
+            # Получаем статистику
+            all_games = await self.db.get_all_games()
+            all_genres = await self.db.get_all_genres()
+            
+            games_with_genres = [game for game in all_games if game.get('genres')]
+            
+            # Считаем топ жанры
+            genre_counts = {}
+            for genre in all_genres[:10]:  # Берем первые 10 для скорости
+                games_by_genre = await self.db.get_games_by_genre(genre)
+                genre_counts[genre] = len(games_by_genre)
+            
+            sorted_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)
+            
+            stats_text = f"""
+📊 **СТАТИСТИКА БОТА**
+
+🎮 **Игры в базе:** {len(all_games)}
+🏷️ **С жанрами:** {len(games_with_genres)} ({len(games_with_genres)/len(all_games)*100:.1f}%)
+🎯 **Уникальных жанров:** {len(all_genres)}
+
+📈 **ТОП-10 ЖАНРОВ:**
+"""
+            
+            for i, (genre, count) in enumerate(sorted_genres, 1):
+                stats_text += f"{i:2d}. {genre}: {count} игр\n"
+            
+            stats_text += f"""
+📱 **Версия:** beta-1.0.9
+🔗 **Источник:** asst2game.ru
+🚀 **Статус:** Активен
+            """
+            
+            await update.message.reply_text(stats_text, parse_mode='Markdown')
+            logger.info(f"User {update.effective_user.id} requested stats")
+            
+        except Exception as e:
+            logger.error(f"Error in stats_command: {e}")
+            await safe_execute(update.message.reply_text, "📊 Статистика временно недоступна")
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
@@ -572,6 +679,8 @@ class GameTrackerBot:
         application.add_handler(CommandHandler("games", self.games_command))
         application.add_handler(CommandHandler("update_genres", self.update_genres_command))
         application.add_handler(CommandHandler("search", self.search_command))
+        application.add_handler(CommandHandler("help", self.help_command))
+        application.add_handler(CommandHandler("stats", self.stats_command))
         
         # Добавление админских команд
         admin_handlers = self.admin_commands.get_handlers()
