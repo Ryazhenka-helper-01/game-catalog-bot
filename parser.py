@@ -376,7 +376,43 @@ class GameParser:
     
     def _extract_description(self, soup) -> str:
         """Извлечение описания"""
-        # 0. Приоритет: основной контейнер описания, указанный пользователем.
+        # 0. Приоритет: блок под заголовком с хэштегом
+        # Ищем заголовок (h1-h6), в тексте которого есть '#',
+        # и собираем все абзацы <p> под ним до следующего заголовка.
+        try:
+            for level in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                for heading in soup.find_all(level):
+                    heading_text = clean_text(heading.get_text())
+                    if '#' not in heading_text:
+                        continue
+
+                    parts = []
+                    # Идём по соседям после заголовка, пока не встретим следующий заголовок
+                    for sibling in heading.next_siblings:
+                        if not getattr(sibling, 'name', None):
+                            continue
+                        if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                            break
+
+                        if sibling.name == 'p':
+                            txt = clean_text(sibling.get_text())
+                            if txt:
+                                parts.append(txt)
+                        else:
+                            # Если внутри есть свои <p>, тоже собираем
+                            for p in sibling.find_all('p'):
+                                txt = clean_text(p.get_text())
+                                if txt:
+                                    parts.append(txt)
+
+                    full_text = "\n\n".join(parts).strip()
+                    if len(full_text) > 50:
+                        return full_text
+        except Exception:
+            # Если структура изменилась, просто продолжаем к остальным методам.
+            pass
+
+        # 1. Основной контейнер описания, указанный пользователем (XPath main/p[1..]).
         # XPath: /html/body/section[2]/section/div/div/article/div[5]/div[2]/div[1]/div/div[1]/div[2]/main/p[1..]
         # Преобразуем в CSS-путь и собираем все <p> внутри main.
         try:
@@ -395,14 +431,14 @@ class GameParser:
             # Если структура изменилась, просто продолжаем к остальным методам.
             pass
 
-        # 1. Meta itemprop="description" content="..." (обычно короткий, но оставим как запасной вариант)
+        # 2. Meta itemprop="description" content="..." (обычно короткий, но оставим как запасной вариант)
         meta_desc = soup.find('meta', attrs={'itemprop': 'description'})
         if meta_desc and meta_desc.get('content'):
             description = clean_text(meta_desc.get('content'))
             if len(description) > 20:  # Только осмысленные описания
                 return description
         
-        # 2. Стандартные селекторы описания
+        # 3. Стандартные селекторы описания
         selectors = [
             '.description', '.game-description', '.summary', '.about',
             '.post-content', '.entry-content', '.content', 'article p',
@@ -416,7 +452,7 @@ class GameParser:
                 if len(text) > 50:  # Только осмысленные описания
                     return text
         
-        # 3. Запасной вариант - первый осмысленный абзац во всей странице
+        # 4. Запасной вариант - первый осмысленный абзац во всей странице
         paragraphs = soup.find_all('p')
         for p in paragraphs:
             text = clean_text(p.get_text())
