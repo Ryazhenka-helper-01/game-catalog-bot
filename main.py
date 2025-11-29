@@ -31,6 +31,13 @@ class GameTrackerBot:
         self.scheduler = GameScheduler(self.db, self.bot_token)
         self.admin_commands = AdminCommands(self.db, self.parser, self.scheduler)
         
+        # Гарантируем, что база и все колонки существуют (миграция при старте)
+        asyncio.create_task(self._ensure_db_schema())
+    
+    async def _ensure_db_schema(self):
+        """Выполнить миграцию БД при старте, если нужно"""
+        await self.db.init_db()
+        
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         try:
@@ -841,6 +848,9 @@ if __name__ == '__main__':
         print(f"Error during initial parsing: {e}")
     
     print("Starting bot...")
+    # Гарантируем, что база данных имеет актуальную схему (добавляем missing колонки)
+    asyncio.run(bot.db.init_db())
+    
     # Запуск бота
     port = int(os.environ.get('PORT', 8080))
     bot.run()
