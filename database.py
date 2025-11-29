@@ -31,6 +31,14 @@ class Database:
                 )
             ''')
             
+            # Добавляем missing колонки, если их нет (для обратной совместимости)
+            cursor = await db.execute("PRAGMA table_info(games)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if 'created_at' not in columns:
+                await db.execute("ALTER TABLE games ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            if 'updated_at' not in columns:
+                await db.execute("ALTER TABLE games ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS notifications (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -313,8 +321,9 @@ class Database:
                         set_clauses.append('url = ?')
                         values.append(game_data['url'])
                     
-                    set_clauses.append('updated_at = ?')
-                    values.append(datetime.now().isoformat())
+                    # updated_at обновляется автоматически через DEFAULT CURRENT_TIMESTAMP,
+                    # но если колонка уже есть и мы хотим явно обновить время:
+                    set_clauses.append('updated_at = CURRENT_TIMESTAMP')
                     values.append(game_id)
                     
                     if set_clauses:
