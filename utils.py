@@ -135,7 +135,7 @@ def validate_game_data(game: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(screenshots, list):
         validated['screenshots'] = [
             normalize_url(validated['url'], str(s)) 
-            for s in screenshots[:10] 
+            for s in screenshots 
             if s and is_valid_url(normalize_url(validated['url'], str(s)))
         ]
     else:

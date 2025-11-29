@@ -603,14 +603,21 @@ class GameTrackerBot:
                 caption_text = message_text[:caption_limit - 3] + "..."
                 extra_text = message_text[caption_limit - 3:]
 
+            chat_id = query.message.chat_id
+
             if photo_url:
-                await query.edit_message_media(
-                    media={'type': 'photo', 'media': photo_url, 'caption': caption_text},
+                # Вместо edit_message_media шлём новое фото-сообщение,
+                # чтобы избежать ошибок при обновлении медиа.
+                sent = await query.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo_url,
+                    caption=caption_text,
                     reply_markup=reply_markup
                 )
             else:
                 extra_text = ""  # если нет фото, весь текст уйдет одним сообщением ниже
-                await query.edit_message_text(
+                sent = await query.bot.send_message(
+                    chat_id=chat_id,
                     text=message_text,
                     reply_markup=reply_markup,
                     parse_mode='Markdown',
@@ -619,7 +626,6 @@ class GameTrackerBot:
 
             # Если есть хвост после caption, досылаем его как одно или несколько сообщений
             if extra_text:
-                chat_id = query.message.chat_id
                 # режем по ~4000 символов, чтобы не упереться в лимит 4096
                 chunk_size = 4000
                 for i in range(0, len(extra_text), chunk_size):
@@ -630,6 +636,16 @@ class GameTrackerBot:
                         parse_mode='Markdown',
                         disable_web_page_preview=True
                     )
+
+            # Старое сообщение с кнопкой можно обновить на короткий текст,
+            # чтобы пользователь понимал, что подробности пришли ниже.
+            try:
+                await query.edit_message_text(
+                    text="Карточка игры отправлена ниже 👇",
+                    reply_markup=None
+                )
+            except Exception:
+                pass
 
         except Exception as e:
             logger.error(f"Error sending game details: {e}")

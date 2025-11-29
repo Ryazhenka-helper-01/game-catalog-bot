@@ -713,7 +713,7 @@ class GameParser:
                 src = elem.get('src') or elem.get('data-src')
                 if src:
                     full_url = normalize_url(base_url, src)
-                    if is_valid_url(full_url) and len(screenshots) < 10:
+                    if is_valid_url(full_url) and full_url not in screenshots:
                         screenshots.append(full_url)
         
         # Если скриншотов мало, добавляем обычные изображения
@@ -725,10 +725,8 @@ class GameParser:
                     full_url = normalize_url(base_url, src)
                     if is_valid_url(full_url) and full_url not in screenshots:
                         screenshots.append(full_url)
-                        if len(screenshots) >= 5:
-                            break
         
-        return screenshots[:10]
+        return screenshots
     
     def _extract_release_date(self, soup) -> str:
         """Извлечение даты релиза"""
