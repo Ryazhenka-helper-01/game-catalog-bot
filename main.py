@@ -539,7 +539,6 @@ class GameTrackerBot:
         
         # Описание
         if description and description != 'Описание отсутствует':
-            # Показываем полное описание без обрезки
             message_text += f"📝 **Описание:**\n{description}\n\n"
         else:
             message_text += f"📝 **Описание:** Отсутствует\n\n"
@@ -577,19 +576,44 @@ class GameTrackerBot:
                 photo_url = image_url
             else:
                 photo_url = None
-            
+
+            # Telegram ограничивает caption для фото ~1024 символами,
+            # поэтому длинный текст делим: короткий caption + доп. сообщения.
+            caption_limit = 900
+            caption_text = message_text
+            extra_text = ""
+            if len(message_text) > caption_limit:
+                caption_text = message_text[:caption_limit - 3] + "..."
+                extra_text = message_text[caption_limit - 3:]
+
             if photo_url:
                 await query.edit_message_media(
-                    media={'type': 'photo', 'media': photo_url, 'caption': message_text},
+                    media={'type': 'photo', 'media': photo_url, 'caption': caption_text},
                     reply_markup=reply_markup
                 )
             else:
+                extra_text = ""  # если нет фото, весь текст уйдет одним сообщением ниже
                 await query.edit_message_text(
                     text=message_text,
                     reply_markup=reply_markup,
                     parse_mode='Markdown',
                     disable_web_page_preview=True
                 )
+
+            # Если есть хвост после caption, досылаем его как одно или несколько сообщений
+            if extra_text:
+                chat_id = query.message.chat_id
+                # режем по ~4000 символов, чтобы не упереться в лимит 4096
+                chunk_size = 4000
+                for i in range(0, len(extra_text), chunk_size):
+                    chunk = extra_text[i:i + chunk_size]
+                    await query.bot.send_message(
+                        chat_id=chat_id,
+                        text=chunk,
+                        parse_mode='Markdown',
+                        disable_web_page_preview=True
+                    )
+
         except Exception as e:
             logger.error(f"Error sending game details: {e}")
             await query.edit_message_text(
