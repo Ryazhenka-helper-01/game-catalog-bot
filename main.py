@@ -507,14 +507,31 @@ class GameTrackerBot:
     
     async def show_game_details(self, query, game_id: int, page: int = 0):
         """Показать детальную информацию об игре с жанрами"""
+        # Берем игру из базы
         game = await self.db.get_game_by_id(game_id)
         
         if not game:
             await query.edit_message_text("Игра не найдена")
             return
-        
-        # Формируем сообщение с информацией об игре
-        title = game['title']
+
+        # Гарантированно обновляем описание и детали игры с сайта,
+        # чтобы текст совпадал с полным описанием на asst2game.ru
+        try:
+            game_url = game.get('url')
+            if game_url and game_url != self.parser.base_url:
+                detailed_game = await self.parser.parse_game_details(game_url)
+                if detailed_game:
+                    # Обновляем игру в базе и используем актуальные данные
+                    await self.db.update_game(game_id, detailed_game)
+                    # Берем объединенные данные: БД + новые поля
+                    game = await self.db.get_game_by_id(game_id) or game
+        except Exception as e:
+            logger.error(f"Error refreshing game details from site: {e}")
+            # В случае ошибки продолжаем с тем, что уже в базе
+            pass
+
+        # Формируем сообщение с информацией об игре (после возможного обновления)
+        title = game.get('title', 'Без названия')
         description = game.get('description', 'Описание отсутствует')
         rating = game.get('rating', 'N/A')
         genres = game.get('genres', [])
