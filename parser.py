@@ -473,7 +473,9 @@ class GameParser:
     
     def _extract_rating(self, soup) -> str:
         """Извлечение рейтинга"""
+        # Приоритет: указанный селектор для пользовательского рейтинга
         selectors = [
+            '#fix_tabs_filess > div.tabs_header.content-background-024 > div.rating-game-info.rating-game-user-mini',
             '.rating', '.score', '.game-rating', '.stars',
             'span.rating', 'div.rating', '.rate', '[itemprop="ratingValue"]'
         ]
