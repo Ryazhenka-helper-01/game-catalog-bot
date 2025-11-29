@@ -35,9 +35,11 @@ class Database:
             cursor = await db.execute("PRAGMA table_info(games)")
             columns = [row[1] for row in await cursor.fetchall()]
             if 'created_at' not in columns:
-                await db.execute("ALTER TABLE games ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                await db.execute("ALTER TABLE games ADD COLUMN created_at TIMESTAMP")
+                await db.execute("UPDATE games SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
             if 'updated_at' not in columns:
-                await db.execute("ALTER TABLE games ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                await db.execute("ALTER TABLE games ADD COLUMN updated_at TIMESTAMP")
+                await db.execute("UPDATE games SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL")
             
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS notifications (
