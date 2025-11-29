@@ -17,9 +17,9 @@ class VersionManager:
         try:
             with open(self.version_file, 'r') as f:
                 data = json.load(f)
-                return data.get('version', 'beta-1.1.0')
+                return data.get('version', 'beta-1.1.1')
         except FileNotFoundError:
-            return 'beta-1.1.0'
+            return 'beta-1.1.1'
     
     def save_version(self, version):
         """Сохранение версии"""

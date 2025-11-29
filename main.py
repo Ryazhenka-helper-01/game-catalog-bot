@@ -378,14 +378,17 @@ class GameTrackerBot:
     
     async def search_games_by_genre(self, update: Update, genre: str):
         """Поиск игр по жанру"""
-        games = await self.db.get_games_by_genre(genre)
-        
-        if not games:
+        # Считаем общее количество игр в жанре
+        total_games = await self.db.get_games_count_by_genre(genre)
+        if total_games == 0:
             await update.message.reply_text(
                 f"🎮 Игры в жанре '{genre}' не найдены.\n\n"
                 "Попробуйте другой жанр или используйте /genres для просмотра всех жанров."
             )
             return
+        
+        # Берем первую страницу по 5 игр
+        games = await self.db.get_games_by_genre(genre, limit=5, offset=0)
         
         # Создаем клавиатуру с первыми 5 играми
         keyboard = []
@@ -393,13 +396,13 @@ class GameTrackerBot:
             keyboard.append([InlineKeyboardButton(game['title'], callback_data=f"game_{game['id']}_0")])
         
         # Добавляем кнопку "Еще" если есть еще игры
-        if len(games) > 5:
+        if total_games > 5:
             keyboard.append([InlineKeyboardButton("➡️ Еще", callback_data=f"more_{genre}_5")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
-            f"🎮 **Найдено игр в жанре '{genre}': {len(games)}**\n\n"
+            f"🎮 **Найдено игр в жанре '{genre}': {total_games}**\n\n"
             "Выберите игру для подробной информации:",
             reply_markup=reply_markup,
             parse_mode='Markdown'
@@ -499,14 +502,17 @@ class GameTrackerBot:
     
     async def search_games_by_genre_callback(self, query, genre: str):
         """Поиск игр по жанру из кнопки"""
-        games = await self.db.get_games_by_genre(genre)
-        
-        if not games:
+        # Считаем общее количество игр в жанре
+        total_games = await self.db.get_games_count_by_genre(genre)
+        if total_games == 0:
             await query.edit_message_text(
                 f"🎮 Игры в жанре '{genre}' не найдены.\n\n"
                 "Попробуйте другой жанр или используйте /genres для просмотра всех жанров."
             )
             return
+        
+        # Берем первую страницу по 5 игр
+        games = await self.db.get_games_by_genre(genre, limit=5, offset=0)
         
         # Создаем клавиатуру с первыми 5 играми
         keyboard = []
@@ -514,7 +520,7 @@ class GameTrackerBot:
             keyboard.append([InlineKeyboardButton(game['title'], callback_data=f"game_{game['id']}_0")])
         
         # Добавляем кнопку "Показать еще игры" если есть еще игры
-        if len(games) > 5:
+        if total_games > 5:
             keyboard.append([InlineKeyboardButton("📋 Показать еще игры", callback_data=f"more_{genre}_5")])
         
         # Кнопка "Назад к жанрам"
@@ -523,7 +529,7 @@ class GameTrackerBot:
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            f"🎮 **Найдено игр в жанре '{genre}': {len(games)}**\n\n"
+            f"🎮 **Найдено игр в жанре '{genre}': {total_games}**\n\n"
             "Выберите игру для подробной информации:",
             reply_markup=reply_markup,
             parse_mode='Markdown'
@@ -563,9 +569,8 @@ class GameTrackerBot:
         
         # Описание
         if description and description != 'Описание отсутствует':
-            # Ограничиваем описание для лучшей читаемости
-            desc_short = description[:800] + "..." if len(description) > 800 else description
-            message_text += f"📝 **Описание:**\n{desc_short}\n\n"
+            # Показываем полное описание без обрезки
+            message_text += f"📝 **Описание:**\n{description}\n\n"
         else:
             message_text += f"📝 **Описание:** Отсутствует\n\n"
         

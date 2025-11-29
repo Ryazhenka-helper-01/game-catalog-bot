@@ -46,10 +46,7 @@ class DescriptionExtractor:
         import html
         text = html.unescape(text)
         
-        # Ограничиваем длину
-        if len(text) > 1000:
-            text = text[:1000].rsplit(' ', 1)[0] + '...'
-        
+        # Возвращаем полный текст без обрезки по длине
         return text.strip()
     
     async def extract_description_from_page(self, url):

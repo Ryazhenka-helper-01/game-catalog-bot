@@ -116,8 +116,8 @@ def validate_game_data(game: Dict[str, Any]) -> Dict[str, Any]:
     if not validated['title']:
         return {}
     
-    # Опциональные поля с очисткой
-    validated['description'] = clean_text(str(game.get('description', '')))[:1000]
+    # Опциональные поля с очисткой (полное описание, без обрезки по длине)
+    validated['description'] = clean_text(str(game.get('description', '')))
     validated['rating'] = clean_text(str(game.get('rating', 'N/A')))[:10]
     validated['url'] = normalize_url('https://asst2game.ru', str(game.get('url', '')))
     validated['image_url'] = normalize_url(validated['url'], str(game.get('image_url', '')))
