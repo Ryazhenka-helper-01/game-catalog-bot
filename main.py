@@ -414,7 +414,7 @@ class GameTrackerBot:
                 parts = callback_data.split("_")
                 game_id = int(parts[1])
                 page = int(parts[2]) if len(parts) > 2 else 0
-                await self.show_game_details(query, game_id, page)
+                await self.show_game_details(query, game_id, page, context)
                 return
             
             # Обработка кнопки "еще игры в жанре"
@@ -505,7 +505,7 @@ class GameTrackerBot:
             parse_mode='Markdown'
         )
     
-    async def show_game_details(self, query, game_id: int, page: int = 0):
+    async def show_game_details(self, query, game_id: int, page: int = 0, context: ContextTypes.DEFAULT_TYPE | None = None):
         """Показать детальную информацию об игре с жанрами"""
         # Берем игру из базы
         game = await self.db.get_game_by_id(game_id)
@@ -604,20 +604,31 @@ class GameTrackerBot:
                 extra_text = message_text[caption_limit - 3:]
 
             chat_id = query.message.chat_id
+            bot = context.bot if context is not None else None
 
-            if photo_url:
+            if photo_url and bot is not None:
                 # Вместо edit_message_media шлём новое фото-сообщение,
                 # чтобы избежать ошибок при обновлении медиа.
-                sent = await query.bot.send_photo(
+                await bot.send_photo(
                     chat_id=chat_id,
                     photo=photo_url,
                     caption=caption_text,
                     reply_markup=reply_markup
                 )
-            else:
+            elif bot is not None:
                 extra_text = ""  # если нет фото, весь текст уйдет одним сообщением ниже
-                sent = await query.bot.send_message(
+                await bot.send_message(
                     chat_id=chat_id,
+                    text=message_text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
+                )
+            else:
+                # На всякий случай, если по какой-то причине context отсутствует,
+                # пробуем отредактировать текущее сообщение текстом.
+                extra_text = ""
+                await query.edit_message_text(
                     text=message_text,
                     reply_markup=reply_markup,
                     parse_mode='Markdown',
@@ -625,12 +636,12 @@ class GameTrackerBot:
                 )
 
             # Если есть хвост после caption, досылаем его как одно или несколько сообщений
-            if extra_text:
+            if extra_text and bot is not None:
                 # режем по ~4000 символов, чтобы не упереться в лимит 4096
                 chunk_size = 4000
                 for i in range(0, len(extra_text), chunk_size):
                     chunk = extra_text[i:i + chunk_size]
-                    await query.bot.send_message(
+                    await bot.send_message(
                         chat_id=chat_id,
                         text=chunk,
                         parse_mode='Markdown',

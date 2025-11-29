@@ -47,6 +47,14 @@ class GameParser:
                 return cached_content
         
         try:
+            # Ленивая инициализация сессии, если парсер используют без контекстного менеджера
+            if self.session is None:
+                self.session = aiohttp.ClientSession(
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                )
+
             timeout = aiohttp.ClientTimeout(total=30)
             async with self.session.get(url, timeout=timeout) as response:
                 if response.status == 200:
