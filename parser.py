@@ -383,11 +383,8 @@ class GameParser:
         return ""
     
     def _extract_description(self, soup) -> str:
-        """Извлечение описания"""
-        # 0. Приоритет: блок описания внутри
-        # #info > div > div.full-story > div.description-container
-        # Внутри него ищем заголовок с текстом, содержащим "#copypast",
-        # и собираем все <p> под ним до следующего заголовка.
+        """Извлечь полное описание, используя несколько селекторов по порядку."""
+        # Способ 0: #info > ... > .description-container + заголовок #copypast
         try:
             desc_root = soup.select_one('#info > div > div.full-story > div.description-container')
             if desc_root:
@@ -418,12 +415,9 @@ class GameParser:
                         if len(full_text) > 50:
                             return full_text
         except Exception:
-            # Если структура изменилась, просто продолжаем к остальным методам.
             pass
 
-        # 1. Основной контейнер описания, указанный пользователем (XPath main/p[1..]).
-        # XPath: /html/body/section[2]/section/div/div/article/div[5]/div[2]/div[1]/div/div[1]/div[2]/main/p[1..]
-        # Преобразуем в CSS-путь и собираем все <p> внутри main.
+        # Способ 1: Строгий путь, который ты дал: main/p[1..]
         try:
             main_container = soup.select_one(
                 'body > section.wrap.cf > section > div > div > article > '
@@ -437,37 +431,44 @@ class GameParser:
                 if len(full_text) > 50:
                     return full_text
         except Exception:
-            # Если структура изменилась, просто продолжаем к остальным методам.
             pass
 
-        # 2. Meta itemprop="description" content="..." (обычно короткий, но оставим как запасной вариант)
-        meta_desc = soup.find('meta', attrs={'itemprop': 'description'})
-        if meta_desc and meta_desc.get('content'):
-            description = clean_text(meta_desc.get('content'))
-            if len(description) > 20:  # Только осмысленные описания
-                return description
-        
-        # 3. Стандартные селекторы описания
+        # Способ 2: Общие селекторы (fallback)
         selectors = [
             '.description', '.game-description', '.summary', '.about',
             '.post-content', '.entry-content', '.content', 'article p',
             '.game-info', '.details', 'div[itemprop="description"]'
         ]
-        
         for selector in selectors:
-            elem = soup.select_one(selector)
-            if elem:
-                text = clean_text(elem.get_text())
-                if len(text) > 50:  # Только осмысленные описания
+            try:
+                elem = soup.select_one(selector)
+                if elem:
+                    text = clean_text(elem.get_text())
+                    if len(text) > 50:
+                        return text
+            except Exception:
+                continue
+
+        # Способ 3: Первый осмысленный абзац на странице
+        try:
+            paragraphs = soup.find_all('p')
+            for p in paragraphs:
+                text = clean_text(p.get_text())
+                if len(text) > 50 and 'Nintendo Switch' not in text:
                     return text
-        
-        # 4. Запасной вариант - первый осмысленный абзац во всей странице
-        paragraphs = soup.find_all('p')
-        for p in paragraphs:
-            text = clean_text(p.get_text())
-            if len(text) > 50 and 'Nintendo Switch' not in text:
-                return text
-        
+        except Exception:
+            pass
+
+        # Способ 4: Meta description как крайний запас
+        try:
+            meta_desc = soup.find('meta', attrs={'name': 'description'})
+            if meta_desc and meta_desc.get('content'):
+                desc = clean_text(meta_desc['content'])
+                if len(desc) > 20:
+                    return desc
+        except Exception:
+            pass
+
         return ""
     
     def _extract_rating(self, soup) -> str:
