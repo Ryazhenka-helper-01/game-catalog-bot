@@ -376,8 +376,26 @@ class GameParser:
     
     def _extract_description(self, soup) -> str:
         """Извлечение описания"""
-        
-        # 1. Приоритет: meta itemprop="description" content="..." (возвращаем полный текст)
+        # 0. Приоритет: основной контейнер описания, указанный пользователем.
+        # XPath: /html/body/section[2]/section/div/div/article/div[5]/div[2]/div[1]/div/div[1]/div[2]/main/p[1..]
+        # Преобразуем в CSS-путь и собираем все <p> внутри main.
+        try:
+            main_container = soup.select_one(
+                'body > section.wrap.cf > section > div > div > article > '
+                'div:nth-of-type(5) > div:nth-of-type(2) > div > div > '
+                'div:nth-of-type(1) > div:nth-of-type(2) > main'
+            )
+            if main_container:
+                paragraphs = main_container.find_all('p')
+                parts = [clean_text(p.get_text()) for p in paragraphs if clean_text(p.get_text())]
+                full_text = "\n\n".join(parts).strip()
+                if len(full_text) > 50:
+                    return full_text
+        except Exception:
+            # Если структура изменилась, просто продолжаем к остальным методам.
+            pass
+
+        # 1. Meta itemprop="description" content="..." (обычно короткий, но оставим как запасной вариант)
         meta_desc = soup.find('meta', attrs={'itemprop': 'description'})
         if meta_desc and meta_desc.get('content'):
             description = clean_text(meta_desc.get('content'))
@@ -398,7 +416,7 @@ class GameParser:
                 if len(text) > 50:  # Только осмысленные описания
                     return text
         
-        # 3. Запасной вариант - первый абзац (полный текст абзаца)
+        # 3. Запасной вариант - первый осмысленный абзац во всей странице
         paragraphs = soup.find_all('p')
         for p in paragraphs:
             text = clean_text(p.get_text())
