@@ -30,9 +30,6 @@ class GameTrackerBot:
         self.parser = GameParser()
         self.scheduler = GameScheduler(self.db, self.bot_token)
         self.admin_commands = AdminCommands(self.db, self.parser, self.scheduler)
-        
-        # Гарантируем, что база и все колонки существуют (миграция при старте)
-        asyncio.create_task(self._ensure_db_schema())
     
     async def _ensure_db_schema(self):
         """Выполнить миграцию БД при старте, если нужно"""
