@@ -376,38 +376,39 @@ class GameParser:
     
     def _extract_description(self, soup) -> str:
         """Извлечение описания"""
-        # 0. Приоритет: блок под заголовком с хэштегом
-        # Ищем заголовок (h1-h6), в тексте которого есть '#',
-        # и собираем все абзацы <p> под ним до следующего заголовка.
+        # 0. Приоритет: блок описания внутри
+        # #info > div > div.full-story > div.description-container
+        # Внутри него ищем заголовок с текстом, содержащим "#copypast",
+        # и собираем все <p> под ним до следующего заголовка.
         try:
-            for level in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-                for heading in soup.find_all(level):
-                    heading_text = clean_text(heading.get_text())
-                    if '#' not in heading_text:
-                        continue
-
-                    parts = []
-                    # Идём по соседям после заголовка, пока не встретим следующий заголовок
-                    for sibling in heading.next_siblings:
-                        if not getattr(sibling, 'name', None):
+            desc_root = soup.select_one('#info > div > div.full-story > div.description-container')
+            if desc_root:
+                for level in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                    for heading in desc_root.find_all(level):
+                        heading_text = clean_text(heading.get_text())
+                        if '#copypast' not in heading_text:
                             continue
-                        if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-                            break
 
-                        if sibling.name == 'p':
-                            txt = clean_text(sibling.get_text())
-                            if txt:
-                                parts.append(txt)
-                        else:
-                            # Если внутри есть свои <p>, тоже собираем
-                            for p in sibling.find_all('p'):
-                                txt = clean_text(p.get_text())
+                        parts = []
+                        for sibling in heading.next_siblings:
+                            if not getattr(sibling, 'name', None):
+                                continue
+                            if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                                break
+
+                            if sibling.name == 'p':
+                                txt = clean_text(sibling.get_text())
                                 if txt:
                                     parts.append(txt)
+                            else:
+                                for p in sibling.find_all('p'):
+                                    txt = clean_text(p.get_text())
+                                    if txt:
+                                        parts.append(txt)
 
-                    full_text = "\n\n".join(parts).strip()
-                    if len(full_text) > 50:
-                        return full_text
+                        full_text = "\n\n".join(parts).strip()
+                        if len(full_text) > 50:
+                            return full_text
         except Exception:
             # Если структура изменилась, просто продолжаем к остальным методам.
             pass
