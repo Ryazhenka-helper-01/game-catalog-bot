@@ -825,24 +825,32 @@ if __name__ == '__main__':
         # Затем проверяем, есть ли игры в базе
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
-        if len(existing_games) < 100:  # Если игр меньше 100, гарантированно загружаем
-            print(f"Database has only {len(existing_games)} games. Running smart loading...")
+        if len(existing_games) < 100:  # Если игр меньше 100, загружаем из JSON
+            print(f"Database has only {len(existing_games)} games. Loading from JSON files...")
             
-            # Импортируем и запускаем умную загрузку
-            from smart_game_parser import smart_parse_all_games
-            result = asyncio.get_event_loop().run_until_complete(smart_parse_all_games())
-            
-            if result:
-                print("✅ Games loaded successfully!")
-            else:
-                print("❌ Failed to load games, trying fallback...")
-                # Резервный метод
-                from ensure_games_loaded import ensure_games_loaded
-                fallback_result = asyncio.get_event_loop().run_until_complete(ensure_games_loaded())
-                if fallback_result:
-                    print("✅ Fallback loading successful!")
+            # Используем гарантированное исправление с JSON файлами
+            try:
+                result = guaranteed_railway_fix()
+                if result:
+                    print("✅ Games loaded from JSON successfully!")
                 else:
-                    print("❌ Both methods failed")
+                    print("❌ JSON loading failed, trying smart parser...")
+                    # Резервный метод
+                    from smart_game_parser import smart_parse_all_games
+                    fallback_result = asyncio.get_event_loop().run_until_complete(smart_parse_all_games())
+                    if fallback_result:
+                        print("✅ Smart parser successful!")
+                    else:
+                        print("❌ Both methods failed")
+            except Exception as e:
+                print(f"Error in JSON loading: {e}")
+                print("Trying smart parser as fallback...")
+                from smart_game_parser import smart_parse_all_games
+                fallback_result = asyncio.get_event_loop().run_until_complete(smart_parse_all_games())
+                if fallback_result:
+                    print("✅ Smart parser successful!")
+                else:
+                    print("❌ All methods failed")
                 
         else:
             print(f"Database already has {len(existing_games)} games. Skipping initial parsing.")
