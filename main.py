@@ -821,65 +821,20 @@ if __name__ == '__main__':
         # Сначала проверим, есть ли игры в базе
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
-        if len(existing_games) < 500:  # Если игр меньше 500, парсим с сайта
-            print(f"Database has only {len(existing_games)} games. Starting fresh parsing...")
+        if len(existing_games) < 100:  # Если игр меньше 100, гарантированно загружаем
+            print(f"Database has only {len(existing_games)} games. Running guaranteed loading...")
             
-            # Пробуем гарантированное исправление (если есть JSON)
-            try:
-                result = guaranteed_railway_fix()
-                if result:
-                    print("GUARANTEED FIX SUCCESSFUL!")
-                else:
-                    print("GUARANTEED FIX FAILED - falling back to site parsing")
-                    # Если JSON нет, парсим с сайта
-                    print("Parsing games from site...")
-                    games = asyncio.get_event_loop().run_until_complete(bot.parser.parse_game_list())
-                    print(f"Parsed {len(games)} games from site")
-                    
-                    # Сохраняем в базу
-                    for game in games:
-                        asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
-                    
-                    print(f"Saved {len(games)} games to database")
-                    
-            except Exception as e:
-                print(f"Error in guaranteed fix: {e}")
-                print("Falling back to site parsing...")
+            # Импортируем и запускаем гарантированную загрузку
+            from ensure_games_loaded import ensure_games_loaded
+            result = asyncio.get_event_loop().run_until_complete(ensure_games_loaded())
+            
+            if result:
+                print("✅ Games loaded successfully!")
+            else:
+                print("❌ Failed to load games")
                 
-                # Если JSON нет или ошибка, парсим с сайта
-                print("Parsing games from site...")
-                games = asyncio.get_event_loop().run_until_complete(bot.parser.parse_game_list())
-                print(f"Parsed {len(games)} games from site")
-                
-                # Сохраняем в базу
-                for game in games:
-                    asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
-                
-                print(f"Saved {len(games)} games to database")
-        
         else:
-            # Если игр достаточно, обновляем детали
-            print(f"Updating {len(existing_games)} existing games with details...")
-            updated_count = 0
-            
-            for game in existing_games:
-                try:
-                    if game.get('url') and game['url'] != bot.parser.base_url:
-                        detailed_game = asyncio.get_event_loop().run_until_complete(bot.parser.parse_game_details(game['url']))
-                        if detailed_game:
-                            asyncio.get_event_loop().run_until_complete(bot.db.update_game(game['id'], detailed_game))
-                            updated_count += 1
-                            print(f"Updated game: {game['title']}")
-                    
-                    # Небольшая задержка
-                    if updated_count < len(existing_games) - 1:
-                        asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.5))
-                        
-                except Exception as e:
-                    print(f"Error updating game {game.get('title', 'Unknown')}: {e}")
-                    continue
-            
-            print(f"Successfully updated {updated_count} games with details")
+            print(f"Database already has {len(existing_games)} games. Skipping initial parsing.")
         
         # Показываем статистику
         all_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
