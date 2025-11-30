@@ -750,16 +750,21 @@ class GameTrackerBot:
         application.add_error_handler(self.error_handler)
         
         # Подсказки для слэш-команд (список команд в клиенте Telegram)
-        async def post_init(app: Application):
+        async def post_init(application: Application) -> None:
+            """Инициализация после запуска приложения"""
+            # Установка команд бота
             commands = [
-                BotCommand("start", "Информация о боте и клавиатура команд"),
-                BotCommand("help", "Подробная справка по командам"),
-                BotCommand("genres", "Показать все жанры"),
-                BotCommand("games", "Все игры с пагинацией"),
+                BotCommand("start", "Запустить бота и краткая информация"),
+                BotCommand("help", "Подробная справка по всем командам"),
+                BotCommand("genres", "Показать список жанров"),
+                BotCommand("games", "Показать все игры"),
                 BotCommand("search", "Поиск игр по жанру"),
                 BotCommand("stats", "Статистика по играм и жанрам"),
             ]
-            await app.bot.set_my_commands(commands)
+            await application.bot.set_my_commands(commands)
+            
+            # Гарантируем, что база данных имеет актуальную схему (миграция)
+            await bot.db.init_db()
 
         application.post_init = post_init
         
@@ -784,9 +789,6 @@ if __name__ == '__main__':
     if not bot.bot_token:
         print("Bot token not found. Exiting...")
         exit(1)
-    
-    # Инициализация базы данных
-    asyncio.get_event_loop().run_until_complete(bot.db.init_db())
     
     # Автоматический парсинг игр при первом запуске
     print("Starting initial game parsing...")
@@ -845,9 +847,6 @@ if __name__ == '__main__':
         print(f"Error during initial parsing: {e}")
     
     print("Starting bot...")
-    # Гарантируем, что база данных имеет актуальную схему (добавляем missing колонки)
-    asyncio.run(bot.db.init_db())
-    
     # Запуск бота
     port = int(os.environ.get('PORT', 8080))
     bot.run()
