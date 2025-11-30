@@ -735,6 +735,12 @@ class GameTrackerBot:
                 await self.show_game_details(query, game_id, page, context)
                 return
             
+            # Обработка кнопки "Читать далее"
+            if callback_data.startswith("read_more_"):
+                game_id = int(callback_data.split("_")[2])
+                await self.handle_read_more(query, game_id, context)
+                return
+            
             # Обработка кнопки "еще игры в жанре"
             if callback_data.startswith("more_"):
                 parts = callback_data.split("_")
@@ -824,166 +830,199 @@ class GameTrackerBot:
         )
     
     async def show_game_details(self, query, game_id: int, page: int = 0, context: ContextTypes.DEFAULT_TYPE | None = None):
-        """Показать детальную информацию об игре с жанрами"""
-        # Берем игру из базы
-        game = await self.db.get_game_by_id(game_id)
-        
-        if not game:
-            await query.edit_message_text("Игра не найдена")
-            return
-
-        # Гарантированно обновляем описание и детали игры с сайта,
-        # чтобы текст совпадал с полным описанием на asst2game.ru
+        """Показать подробную информацию об игре"""
         try:
-            game_url = game.get('url')
-            if game_url and game_url != self.parser.base_url:
-                detailed_game = await self.parser.parse_game_details(game_url)
-                if detailed_game:
-                    # Обновляем игру в базе и используем актуальные данные
-                    await self.db.update_game(game_id, detailed_game)
-                    # Берем объединенные данные: БД + новые поля
-                    game = await self.db.get_game_by_id(game_id) or game
-        except Exception as e:
-            logger.error(f"Error refreshing game details from site: {e}")
-            # В случае ошибки продолжаем с тем, что уже в базе
-            pass
-
-        # Формируем сообщение с информацией об игре (после возможного обновления)
-        title = game.get('title', 'Без названия')
-        description = game.get('description', 'Описание отсутствует')
-        rating = game.get('rating', 'N/A')
-        genres = game.get('genres', [])
-        image_url = game.get('image_url', '')
-        release_date = game.get('release_date', '')
-        
-        message_text = f"🎮 **{title}**\n\n"
-        
-        # Рейтинг
-        if rating and rating != "N/A":
-            message_text += f"⭐ **Рейтинг:** {rating}\n\n"
-        
-        # ЖАНРЫ - главное улучшение!
-        if genres:
-            message_text += f"🏷️ **Жанры:** {', '.join(genres)}\n\n"
-        else:
-            message_text += f"🏷️ **Жанры:** Не указаны\n\n"
-        
-        # Дата релиза
-        if release_date:
-            message_text += f"📅 **Дата релиза:** {release_date}\n\n"
-        
-        # Описание
-        if description and description != 'Описание отсутствует':
-            message_text += f"📝 **Описание:**\n{description}\n\n"
-        else:
-            message_text += f"📝 **Описание:** Отсутствует\n\n"
-        
-        # Добавляем информацию о скриншотах
-        screenshots = game.get('screenshots', [])
-        if screenshots:
-            message_text += f"🖼️ **Скриншоты:** {len(screenshots)} шт. (используйте кнопки ниже)\n\n"
-        
-        message_text += f"🔗 **Источник:** [Игры Nintendo Switch]({game.get('url', '')})\n\n"
-        
-        # Создаем клавиатуру для навигации по скриншотам
-        keyboard = []
-        
-        # Кнопки навигации по скриншотам
-        if screenshots:
-            nav_buttons = []
-            if page > 0:
-                nav_buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"game_{game_id}_{page-1}"))
-            nav_buttons.append(InlineKeyboardButton(f"📸 {page+1}/{len(screenshots)}", callback_data="noop"))
-            if page < len(screenshots) - 1:
-                nav_buttons.append(InlineKeyboardButton("Вперед ➡️", callback_data=f"game_{game_id}_{page+1}"))
-            keyboard.append(nav_buttons)
-        
-        # Кнопка "Назад к списку"
-        keyboard.append([InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_search")])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Отправляем изображение или скриншот
-        try:
-            if page < len(screenshots):
-                photo_url = screenshots[page]
-            elif image_url:
-                photo_url = image_url
+            game = await self.db.get_game_by_id(game_id)
+            if not game:
+                await query.answer("Игра не найдена")
+                return
+            
+            # Формируем сообщение с информацией об игре
+            title = game.get('title', 'Без названия')
+            genres = game.get('genres', [])
+            rating = game.get('rating', 'N/A')
+            release_date = game.get('release_date', 'Неизвестна')
+            description = game.get('description', 'Описание отсутствует')
+            image_url = game.get('image_url', '')
+            url = game.get('url', '')
+            
+            # Жанры
+            if genres and isinstance(genres, list):
+                genre_text = ', '.join(genres[:3])  # Показываем первые 3 жанра
+                if len(genres) > 3:
+                    genre_text += f" и еще {len(genres) - 3}"
             else:
-                photo_url = None
-
-            # Telegram ограничивает caption для фото ~1024 символами,
-            # поэтому длинный текст делим: короткий caption + доп. сообщения.
-            caption_limit = 900
-            caption_text = message_text
-            extra_text = ""
-            if len(message_text) > caption_limit:
-                caption_text = message_text[:caption_limit - 3] + "..."
-                extra_text = message_text[caption_limit - 3:]
-
-            chat_id = query.message.chat_id
-            bot = context.bot if context is not None else None
-
-            if photo_url and bot is not None:
-                # Вместо edit_message_media шлём новое фото-сообщение,
-                # чтобы избежать ошибок при обновлении медиа.
-                await bot.send_photo(
-                    chat_id=chat_id,
-                    photo=photo_url,
-                    caption=caption_text,
-                    reply_markup=reply_markup
-                )
-            elif bot is not None:
-                extra_text = ""  # если нет фото, весь текст уйдет одним сообщением ниже
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=message_text,
-                    reply_markup=reply_markup,
-                    parse_mode='Markdown',
-                    disable_web_page_preview=True
-                )
+                genre_text = 'Не указаны'
+            
+            message_text = f"🎮 **{title}**\n\n"
+            message_text += f"� **Жанры:** {genre_text}\n"
+            
+            # Рейтинг
+            if rating and rating != 'N/A':
+                message_text += f"⭐ **Рейтинг:** {rating}/10\n"
+            
+            # Дата релиза
+            if release_date:
+                message_text += f"📅 **Дата релиза:** {release_date}\n\n"
+            
+            # Обработка описания с сокращением
+            full_description = description if description and description != 'Описание отсутствует' else ""
+            
+            if full_description:
+                # Разбиваем описание на абзацы
+                paragraphs = full_description.split('\n\n')
+                paragraphs = [p.strip() for p in paragraphs if p.strip()]
+                
+                if len(paragraphs) > 2:
+                    # Показываем только первые 2 абзаца
+                    short_description = '\n\n'.join(paragraphs[:2])
+                    message_text += f"� **Описание:**\n{short_description}\n\n"
+                    
+                    # Сохраняем полное описание в памяти для кнопки
+                    full_desc_for_button = '\n\n'.join(paragraphs)
+                    self._temp_full_descriptions = getattr(self, '_temp_full_descriptions', {})
+                    self._temp_full_descriptions[game_id] = full_desc_for_button
+                else:
+                    # Если абзацев 2 или меньше, показываем все
+                    message_text += f"📝 **Описание:**\n{full_description}\n\n"
             else:
-                # На всякий случай, если по какой-то причине context отсутствует,
-                # пробуем отредактировать текущее сообщение текстом.
-                extra_text = ""
-                await query.edit_message_text(
-                    text=message_text,
-                    reply_markup=reply_markup,
-                    parse_mode='Markdown',
-                    disable_web_page_preview=True
-                )
-
-            # Если есть хвост после caption, досылаем его как одно или несколько сообщений
-            if extra_text and bot is not None:
-                # режем по ~4000 символов, чтобы не упереться в лимит 4096
-                chunk_size = 4000
-                for i in range(0, len(extra_text), chunk_size):
-                    chunk = extra_text[i:i + chunk_size]
-                    await bot.send_message(
+                message_text += f"📝 **Описание:** Отсутствует\n\n"
+            
+            # Добавляем информацию о скриншотах
+            screenshots = game.get('screenshots', [])
+            if screenshots:
+                message_text += f"🖼️ **Скриншоты:** {len(screenshots)} шт. (используйте кнопки ниже)\n\n"
+            
+            message_text += f"🔗 **Источник:** [Игры Nintendo Switch]({url})\n\n"
+            
+            # Создаем клавиатуру
+            keyboard = []
+            
+            # Кнопка "Читать далее" если описание было сокращено
+            if full_description and len(full_description.split('\n\n')) > 2:
+                keyboard.append([InlineKeyboardButton("📖 Читать далее", callback_data=f"read_more_{game_id}")])
+            
+            # Кнопки навигации по скриншотам
+            if screenshots:
+                nav_buttons = []
+                if page > 0:
+                    nav_buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"game_{game_id}_{page-1}"))
+                nav_buttons.append(InlineKeyboardButton(f"📸 {page+1}/{len(screenshots)}", callback_data="noop"))
+                if page < len(screenshots) - 1:
+                    nav_buttons.append(InlineKeyboardButton("Вперед ➡️", callback_data=f"game_{game_id}_{page+1}"))
+                if nav_buttons:
+                    keyboard.append(nav_buttons)
+            
+            reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+            
+            # Отправка изображения или текста
+            if image_url and image_url.startswith('http'):
+                try:
+                    chat_id = query.message.chat_id
+                    await context.bot.send_photo(
                         chat_id=chat_id,
-                        text=chunk,
+                        photo=image_url,
+                        caption=message_text,
+                        reply_markup=reply_markup,
                         parse_mode='Markdown',
                         disable_web_page_preview=True
                     )
-
-            # Старое сообщение с кнопкой можно обновить на короткий текст,
-            # чтобы пользователь понимал, что подробности пришли ниже.
-            try:
+                    # Обновляем старое сообщение
+                    await query.edit_message_text(
+                        text="Карточка игры отправлена ниже 👇",
+                        reply_markup=None
+                    )
+                except Exception:
+                    # Если фото не загрузилось, отправляем текст
+                    await query.edit_message_text(
+                        text=message_text,
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown',
+                        disable_web_page_preview=True
+                    )
+            else:
                 await query.edit_message_text(
-                    text="Карточка игры отправлена ниже 👇",
-                    reply_markup=None
+                    text=message_text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
                 )
-            except Exception:
-                pass
-
+                
         except Exception as e:
-            logger.error(f"Error sending game details: {e}")
-            await query.edit_message_text(
-                text=message_text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown',
-                disable_web_page_preview=True
-            )
+            logger.error(f"Error showing game details: {e}")
+            await query.answer("Ошибка при загрузке информации об игре")
+    
+    async def handle_read_more(self, query, game_id: int, context: ContextTypes.DEFAULT_TYPE | None = None):
+        """Обработчик кнопки 'Читать далее'"""
+        try:
+            # Получаем полное описание из временного хранилища
+            full_descriptions = getattr(self, '_temp_full_descriptions', {})
+            full_description = full_descriptions.get(str(game_id), "")
+            
+            if not full_description:
+                await query.answer("Описание не найдено")
+                return
+            
+            # Получаем информацию об игре для заголовка
+            game = await self.db.get_game_by_id(game_id)
+            if not game:
+                await query.answer("Игра не найдена")
+                return
+            
+            title = game.get('title', 'Без названия')
+            
+            # Формируем полное описание
+            message_text = f"📖 **Полное описание игры {title}**\n\n"
+            message_text += f"📝 **Описание:**\n{full_description}\n\n"
+            message_text += f"🔗 **Источник:** [Игры Nintendo Switch]({game.get('url', '')})"
+            
+            # Telegram ограничивает сообщение ~4096 символами
+            if len(message_text) > 4000:
+                # Разбиваем на части если слишком длинное
+                parts = []
+                current_part = ""
+                
+                lines = message_text.split('\n')
+                for line in lines:
+                    if len(current_part + line + '\n') <= 4000:
+                        current_part += line + '\n'
+                    else:
+                        if current_part:
+                            parts.append(current_part)
+                        current_part = line + '\n'
+                
+                if current_part:
+                    parts.append(current_part)
+                
+                # Отправляем части
+                chat_id = query.message.chat_id
+                for i, part in enumerate(parts):
+                    if i == 0:
+                        # Первую часть отправляем как обновление сообщения
+                        await query.edit_message_text(
+                            text=part,
+                            parse_mode='Markdown',
+                            disable_web_page_preview=True
+                        )
+                    else:
+                        # Остальные части как новые сообщения
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=part,
+                            parse_mode='Markdown',
+                            disable_web_page_preview=True
+                        )
+            else:
+                # Отправляем как обычное сообщение
+                await query.edit_message_text(
+                    text=message_text,
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in handle_read_more: {e}")
+            await query.answer("Ошибка при загрузке полного описания")
     
     async def show_more_games(self, query, genre: str, offset: int):
         """Показать еще игры"""
