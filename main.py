@@ -1198,9 +1198,119 @@ if __name__ == '__main__':
                     print(f"Error in smart parser: {e2}")
                     print("❌ All methods failed")
         
-        # АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ ОПИСАНИЙ ОТКЛЮЧЕНО (используйте /update_descriptions)
-        print("� Automatic description updates are disabled. Use /update_descriptions command to update manually.")
-        print("� Bot is ready to work with existing descriptions!")
+        # Проверяем, нужно ли обновлять описания (однократно)
+        print("🔄 Checking if description updates are needed...")
+        try:
+            async def check_and_update_descriptions():
+                try:
+                    # Создаем таблицу для флагов если ее нет
+                    await bot.db.execute("""
+                        CREATE TABLE IF NOT EXISTS bot_flags (
+                            flag_name TEXT PRIMARY KEY,
+                            flag_value TEXT,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    
+                    # Проверяем флаг обновления описаний
+                    flag_result = await bot.db.fetch_one(
+                        "SELECT flag_value FROM bot_flags WHERE flag_name = 'descriptions_updated'"
+                    )
+                    
+                    if flag_result and flag_result['flag_value'] == 'yes':
+                        print("✅ Descriptions already updated. Skipping automatic update.")
+                        return
+                    
+                    # Если флага нет или он не 'yes', обновляем описания
+                    print("📊 First run detected. Starting description updates...")
+                    
+                    games = await bot.db.get_all_games()
+                    if not games:
+                        print("❌ No games found in database")
+                        return
+                    
+                    updated_count = 0
+                    failed_count = 0
+                    
+                    for i, game in enumerate(games):
+                        try:
+                            # Проверяем что game не None
+                            if not game:
+                                failed_count += 1
+                                continue
+                                
+                            game_url = game.get('url') if game else None
+                            game_title = game.get('title', 'Unknown') if game else 'Unknown'
+                            
+                            if not game_url or game_url == bot.parser.base_url:
+                                failed_count += 1
+                                continue
+                            
+                            # Загружаем страницу игры
+                            html = await bot.parser.get_page(game_url)
+                            if not html:
+                                failed_count += 1
+                                continue
+                            
+                            from bs4 import BeautifulSoup
+                            soup = BeautifulSoup(html, 'html.parser')
+                            
+                            # Извлекаем полное описание
+                            full_description = bot.parser.extract_full_description(soup)
+                            
+                            # Извлекаем жанры
+                            genres = bot.parser.extract_genres_from_page(soup)
+                            
+                            # Извлекаем рейтинг
+                            rating = bot.parser.extract_rating_from_page(soup)
+                            
+                            # Обновляем игру в базе
+                            updated_game = {
+                                'description': full_description,
+                                'genres': genres,
+                                'rating': rating
+                            }
+                            
+                            await bot.db.update_game(game['id'], updated_game)
+                            updated_count += 1
+                            
+                            # Небольшая задержка между запросами
+                            if i < len(games) - 1:
+                                await asyncio.sleep(0.5)
+                            
+                            # Показываем прогресс каждые 50 игр
+                            if (i + 1) % 50 == 0:
+                                print(f"📈 Processed {i+1}/{len(games)} games...")
+                        
+                        except Exception as e:
+                            failed_count += 1
+                            game_title = game.get('title', 'Unknown') if game else 'Unknown'
+                            print(f"Error updating game {game_title}: {e}")
+                            continue
+                    
+                    # Устанавливаем флаг, что описания обновлены
+                    await bot.db.execute("""
+                        INSERT OR REPLACE INTO bot_flags (flag_name, flag_value, updated_at)
+                        VALUES ('descriptions_updated', 'yes', CURRENT_TIMESTAMP)
+                    """)
+                    
+                    # Финальная статистика
+                    print(f"✅ **One-time description update completed!**")
+                    print(f"📊 **Statistics:**")
+                    print(f"🎮 Total games: {len(games)}")
+                    print(f"✅ Updated: {updated_count}")
+                    print(f"❌ Skipped: {failed_count}")
+                    print(f"🎯 Descriptions are now fresh from div.full-story!")
+                    print(f"🔒 This update will not run again automatically.")
+                
+                except Exception as e:
+                    print(f"❌ Error in description update system: {e}")
+            
+            # Запускаем проверку и обновление
+            asyncio.get_event_loop().run_until_complete(check_and_update_descriptions())
+                
+        except Exception as e:
+            print(f"❌ Error during description update check: {e}")
         
         # Показываем статистику
         all_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
