@@ -1209,56 +1209,55 @@ if __name__ == '__main__':
                     updated_count = 0
                     failed_count = 0
                     
-                    async with bot.parser:
-                        for i, game in enumerate(games):
-                            try:
-                                game_url = game.get('url')
-                                game_title = game.get('title', 'Unknown')
-                                
-                                if not game_url or game_url == bot.parser.base_url:
-                                    failed_count += 1
-                                    continue
-                                
-                                # Загружаем страницу игры
-                                html = await bot.parser.get_page(game_url)
-                                if not html:
-                                    failed_count += 1
-                                    continue
-                                
-                                from bs4 import BeautifulSoup
-                                soup = BeautifulSoup(html, 'html.parser')
-                                
-                                # Извлекаем полное описание
-                                full_description = bot.extract_full_description(soup)
-                                
-                                # Извлекаем жанры
-                                genres = bot.extract_genres_from_page(soup)
-                                
-                                # Извлекаем рейтинг
-                                rating = bot.extract_rating_from_page(soup)
-                                
-                                # Обновляем игру в базе
-                                updated_game = {
-                                    'description': full_description,
-                                    'genres': genres,
-                                    'rating': rating
-                                }
-                                
-                                await bot.db.update_game(game['id'], updated_game)
-                                updated_count += 1
-                                
-                                # Небольшая задержка между запросами
-                                if i < len(games) - 1:
-                                    await asyncio.sleep(0.5)
-                                
-                                # Показываем прогресс каждые 50 игр
-                                if (i + 1) % 50 == 0:
-                                    print(f"📈 Processed {i+1}/{len(games)} games...")
+                    for i, game in enumerate(games):
+                        try:
+                            game_url = game.get('url')
+                            game_title = game.get('title', 'Unknown')
                             
-                            except Exception as e:
+                            if not game_url or game_url == bot.parser.base_url:
                                 failed_count += 1
-                                print(f"Error updating game {game.get('title', 'Unknown')}: {e}")
                                 continue
+                            
+                            # Загружаем страницу игры
+                            html = await bot.parser.get_page(game_url)
+                            if not html:
+                                failed_count += 1
+                                continue
+                            
+                            from bs4 import BeautifulSoup
+                            soup = BeautifulSoup(html, 'html.parser')
+                            
+                            # Извлекаем полное описание
+                            full_description = bot.extract_full_description(soup)
+                            
+                            # Извлекаем жанры
+                            genres = bot.extract_genres_from_page(soup)
+                            
+                            # Извлекаем рейтинг
+                            rating = bot.extract_rating_from_page(soup)
+                            
+                            # Обновляем игру в базе
+                            updated_game = {
+                                'description': full_description,
+                                'genres': genres,
+                                'rating': rating
+                            }
+                            
+                            await bot.db.update_game(game['id'], updated_game)
+                            updated_count += 1
+                            
+                            # Небольшая задержка между запросами
+                            if i < len(games) - 1:
+                                await asyncio.sleep(0.5)
+                            
+                            # Показываем прогресс каждые 50 игр
+                            if (i + 1) % 50 == 0:
+                                print(f"📈 Processed {i+1}/{len(games)} games...")
+                        
+                        except Exception as e:
+                            failed_count += 1
+                            print(f"Error updating game {game.get('title', 'Unknown')}: {e}")
+                            continue
                     
                     # Финальная статистика
                     print(f"✅ **Automatic description update completed!**")
