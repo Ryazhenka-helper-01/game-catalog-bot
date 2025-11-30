@@ -51,9 +51,9 @@ async def ensure_games_loaded():
             print(f"Approach 1 failed: {e}")
         
         # Подход 2: Если основной парсинг не сработал, используем резервный метод
-        if not games_loaded:
+        if not games_loaded or len(games) < 50:
             try:
-                print("Approach 2: Using fallback parsing method...")
+                print("Approach 2: Using enhanced parsing method...")
                 
                 # Загружаем главную страницу
                 html = await parser.get_page(parser.base_url)
@@ -61,24 +61,44 @@ async def ensure_games_loaded():
                     from bs4 import BeautifulSoup
                     soup = BeautifulSoup(html, 'html.parser')
                     
-                    # Ищем все ссылки на игры
+                    # Ищем все ссылки на игры с разными паттернами
                     links = soup.find_all('a', href=True)
                     game_links = []
                     
                     for link in links:
                         href = link.get('href', '')
-                        if 'nintendo-switch' in href and href.endswith('.html'):
+                        
+                        # Более точные паттерны для поиска игр
+                        if (('.html' in href and 'nintendo-switch' in href) or
+                            ('/game/' in href) or
+                            (href.startswith('/') and '.html' in href)):
+                            
                             full_url = parser.base_url + href if not href.startswith('http') else href
-                            if full_url not in game_links:
+                            
+                            # Избегаем дубликатов и нерелевантных ссылок
+                            if (full_url not in game_links and 
+                                'nintendo-switch' in full_url and
+                                not 'tag' in full_url and
+                                not 'category' in full_url and
+                                not 'page' in full_url):
+                                
                                 game_links.append(full_url)
                     
                     print(f"Found {len(game_links)} game links")
                     
                     # Создаем базовые записи для игр
-                    for i, link in enumerate(game_links[:200]):  # Ограничим 200 играми
+                    for i, link in enumerate(game_links[:300]):  # Увеличим лимит до 300
                         try:
-                            # Извлекаем название из URL
-                            title = link.split('/')[-1].replace('.html', '').replace('-', ' ').title()
+                            # Извлекаем название из URL более умно
+                            url_part = link.split('/')[-1].replace('.html', '')
+                            
+                            # Преобразуем URL в читаемое название
+                            title_words = url_part.split('-')
+                            title = ' '.join([word.capitalize() for word in title_words])
+                            
+                            # Если название слишком короткое или цифровое, пропускаем
+                            if len(title) < 3 or title.isdigit():
+                                continue
                             
                             game = {
                                 'title': title,
@@ -100,7 +120,7 @@ async def ensure_games_loaded():
                             print(f"Error processing link {i+1}: {e}")
                             continue
                     
-                    print(f"Created basic records for {min(len(game_links), 200)} games")
+                    print(f"Created basic records for games")
                     games_loaded = True
                     
             except Exception as e:
