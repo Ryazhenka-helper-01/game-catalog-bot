@@ -145,15 +145,17 @@ def validate_game_data(game: Dict[str, Any]) -> Dict[str, Any]:
 
 # Извлечение рейтинга
 def extract_rating(text: str) -> str:
-    """Извлекает рейтинг из текста"""
+    """Извлекает рейтинг из текста и возвращает в формате X/100"""
     if not text:
         return "N/A"
     
-    # Ищем рейтинг в формате X.X, X/10, X%
+    # Ищем рейтинг в разных форматах
     patterns = [
-        r'(\d+\.?\d*)\s*/\s*10',
-        r'(\d+\.?\d*)\s*%',
-        r'(\d+\.?\d*)\s*из\s*10',
+        r'(\d+\.?\d*)\s*/\s*100',  # X/100
+        r'(\d+\.?\d*)\s*/\s*10',   # X/10
+        r'(\d+\.?\d*)\s*%',        # X%
+        r'(\d+\.?\d*)\s*из\s*100', # X из 100
+        r'(\d+\.?\d*)\s*из\s*10',  # X из 10
         r'rating[:\s]*(\d+\.?\d*)',
     ]
     
@@ -161,9 +163,15 @@ def extract_rating(text: str) -> str:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             rating = float(match.group(1))
-            # Ограничиваем рейтинг от 0 до 10
-            rating = max(0, min(10, rating))
-            return f"{rating:.1f}"
+            
+            # Если рейтинг в процентах или уже из 100, оставляем как есть
+            if '/100' in pattern or '%' in pattern or 'из 100' in pattern:
+                rating = max(0, min(100, rating))
+                return f"{rating:.0f}/100"
+            else:
+                # Преобразуем из 10-балльной шкалы в 100-балльную
+                rating = max(0, min(10, rating)) * 10
+                return f"{rating:.0f}/100"
     
     return "N/A"
 

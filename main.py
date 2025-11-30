@@ -546,7 +546,7 @@ class GameTrackerBot:
         
         # Рейтинг
         if rating and rating != "N/A":
-            message_text += f"⭐ **Рейтинг:** {rating}/10\n\n"
+            message_text += f"⭐ **Рейтинг:** {rating}\n\n"
         
         # ЖАНРЫ - главное улучшение!
         if genres:
