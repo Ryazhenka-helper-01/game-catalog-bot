@@ -18,7 +18,7 @@ logger = setup_logger(__name__)
 
 class GameParser:
     def __init__(self):
-        self.base_url = "https://asst2game.ru/consoles/nintendo-switch/"
+        self.base_url = "https://asst2game.ru"
         self.session = None
         
     async def __aenter__(self):
@@ -47,28 +47,21 @@ class GameParser:
                 return cached_content
         
         try:
-            # Ленивая инициализация сессии, если парсер используют без контекстного менеджера
-            if self.session is None:
-                self.session = aiohttp.ClientSession(
-                    headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                    }
-                )
-
-            timeout = aiohttp.ClientTimeout(total=30)
-            async with self.session.get(url, timeout=timeout) as response:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
+            async with self.session.get(url, headers=headers, timeout=30) as response:
                 if response.status == 200:
-                    content = await response.text()
-                    
-                    # Сохраняем в кэш только если контент не пустой
-                    if use_cache and content.strip():
-                        request_cache.set(url, content, ttl=300)  # 5 минут
-                    
-                    logger.debug(f"Successfully fetched {url} ({len(content)} chars)")
-                    return content
+                    return await response.text()
                 else:
-                    logger.error(f"Failed to fetch {url}: Status {response.status}")
-                    return None
+                    logger.error(f"HTTP {response.status} for {url}")
+                    return ""
                     
         except asyncio.TimeoutError:
             logger.error(f"Timeout fetching {url}")
