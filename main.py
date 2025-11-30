@@ -788,8 +788,7 @@ class GameTrackerBot:
             ]
             await application.bot.set_my_commands(commands)
             
-            # Гарантируем, что база данных имеет актуальную схему (миграция)
-            await bot.db.init_db()
+            # База данных уже инициализирована в main, повторно не вызываем
 
         application.post_init = post_init
         
@@ -818,7 +817,12 @@ if __name__ == '__main__':
     # Автоматический парсинг игр при первом запуске
     print("Starting initial game parsing...")
     try:
-        # Сначала проверим, есть ли игры в базе
+        # СНАЧАЛА инициализируем базу данных
+        print("Initializing database...")
+        asyncio.get_event_loop().run_until_complete(bot.db.init_db())
+        print("Database initialized successfully!")
+        
+        # Затем проверяем, есть ли игры в базе
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
         if len(existing_games) < 100:  # Если игр меньше 100, гарантированно загружаем
