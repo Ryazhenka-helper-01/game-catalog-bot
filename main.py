@@ -192,7 +192,269 @@ class GameTrackerBot:
                 parse_mode='Markdown'
             )
     
-    async def update_genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def update_descriptions_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обновить описания игр с сайта"""
+        try:
+            await update.message.reply_text("🔄 Начинаю обновление описаний игр с сайта...")
+            
+            games = await self.db.get_all_games()
+            if not games:
+                await update.message.reply_text("❌ Игры не найдены в базе данных.")
+                return
+            
+            await update.message.reply_text(f"📊 Найдено {len(games)} игр. Начинаю обновление...")
+            
+            updated_count = 0
+            failed_count = 0
+            
+            async with self.parser:
+                for i, game in enumerate(games):
+                    try:
+                        game_url = game.get('url')
+                        game_title = game.get('title', 'Unknown')
+                        
+                        if not game_url or game_url == self.parser.base_url:
+                            failed_count += 1
+                            continue
+                        
+                        # Загружаем страницу игры
+                        html = await self.parser.get_page(game_url)
+                        if not html:
+                            failed_count += 1
+                            continue
+                        
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(html, 'html.parser')
+                        
+                        # Извлекаем полное описание
+                        full_description = self.extract_full_description(soup)
+                        
+                        # Извлекаем жанры
+                        genres = self.extract_genres_from_page(soup)
+                        
+                        # Извлекаем рейтинг
+                        rating = self.extract_rating_from_page(soup)
+                        
+                        # Обновляем игру в базе
+                        updated_game = {
+                            'description': full_description,
+                            'genres': genres,
+                            'rating': rating
+                        }
+                        
+                        await self.db.update_game(game['id'], updated_game)
+                        
+                        updated_count += 1
+                        
+                        # Небольшая задержка между запросами
+                        if i < len(games) - 1:
+                            await asyncio.sleep(0.5)
+                        
+                        # Показываем прогресс каждые 10 игр
+                        if (i + 1) % 10 == 0:
+                            await update.message.reply_text(
+                                f"📈 Обработано {i+1}/{len(games)} игр...\n"
+                                f"✅ Обновлено: {updated_count}\n"
+                                f"❌ Пропущено: {failed_count}"
+                            )
+                    
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f"Error updating game {game.get('title', 'Unknown')}: {e}")
+                        continue
+            
+            # Финальное сообщение
+            await update.message.reply_text(
+                f"✅ **Обновление описаний завершено!**\n\n"
+                f"📊 **Статистика:**\n"
+                f"🎮 Всего игр: {len(games)}\n"
+                f"✅ Обновлено: {updated_count}\n"
+                f"❌ Пропущено: {failed_count}\n\n"
+                f"🎯 Теперь описания извлечены с сайта!\n"
+                f"Используйте /games для просмотра обновленных игр.",
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in update_descriptions_command: {e}")
+            await safe_execute(
+                update.message.reply_text,
+                "❌ Ошибка при обновлении описаний. Попробуйте позже."
+            )
+    
+    def extract_full_description(self, soup):
+        """Извлечение полного описания со всеми параграфами"""
+        
+        # Способ 1: Ищем контейнер по указанному пути
+        selectors = [
+            'body > section.wrap.cf > section > div > div > article > div:nth-of-type(5) > div:nth-of-type(2) > div > div > div:nth-of-type(1) > div:nth-of-type(2) > main',
+            'article div.description-container main',
+            'article div.description main',
+            'div.description main',
+            'main.description',
+            'article main',
+            '.post-content main',
+            '.entry-content main'
+        ]
+        
+        for selector in selectors:
+            try:
+                container = soup.select_one(selector)
+                if container:
+                    # Собираем все параграфы
+                    paragraphs = container.find_all('p')
+                    if paragraphs:
+                        texts = []
+                        for p in paragraphs:
+                            text = p.get_text().strip()
+                            if text and len(text) > 10:  # Пропускаем короткие параграфы
+                                texts.append(text)
+                        
+                        if texts:
+                            full_text = "\n\n".join(texts)
+                            if len(full_text) > 100:  # Проверяем, что описание достаточно длинное
+                                return full_text
+            except Exception:
+                continue
+        
+        # Способ 2: Ищем все параграфы в статье
+        try:
+            article = soup.find('article')
+            if article:
+                paragraphs = article.find_all('p')
+                texts = []
+                for p in paragraphs:
+                    text = p.get_text().strip()
+                    if text and len(text) > 10:
+                        texts.append(text)
+                
+                if texts:
+                    full_text = "\n\n".join(texts)
+                    if len(full_text) > 100:
+                        return full_text
+        except Exception:
+            pass
+        
+        # Способ 3: Ищем по классам описания
+        description_selectors = [
+            '.description',
+            '.game-description', 
+            '.summary',
+            '.about',
+            '.post-content',
+            '.entry-content',
+            '.content'
+        ]
+        
+        for selector in description_selectors:
+            try:
+                elem = soup.select_one(selector)
+                if elem:
+                    paragraphs = elem.find_all('p')
+                    if paragraphs:
+                        texts = []
+                        for p in paragraphs:
+                            text = p.get_text().strip()
+                            if text and len(text) > 10:
+                                texts.append(text)
+                        
+                        if texts:
+                            full_text = "\n\n".join(texts)
+                            if len(full_text) > 100:
+                                return full_text
+            except Exception:
+                continue
+        
+        return ""  # Возвращаем пустую строку если ничего не нашли
+    
+    def extract_genres_from_page(self, soup):
+        """Извлечение жанров со страницы игры"""
+        
+        genres = []
+        
+        # Ищем жанры в разных местах
+        genre_selectors = [
+            '.genres',
+            '.game-genres',
+            '.category',
+            '.game-category',
+            '.tags',
+            '.game-tags'
+        ]
+        
+        for selector in genre_selectors:
+            try:
+                elem = soup.select_one(selector)
+                if elem:
+                    text = elem.get_text().strip()
+                    # Ищем жанры в тексте
+                    found_genres = self.extract_genre_names(text)
+                    genres.extend(found_genres)
+            except Exception:
+                continue
+        
+        # Убираем дубликаты
+        return list(set(genres))
+    
+    def extract_genre_names(self, text):
+        """Извлечение названий жанров из текста"""
+        
+        if not text:
+            return []
+        
+        # Список жанров на русском и английском
+        genre_keywords = [
+            'Action', 'Adventure', 'RPG', 'Role-Playing', 'Strategy', 'Puzzle',
+            'Simulation', 'Sports', 'Racing', 'Fighting', 'Platformer',
+            'Shooter', 'Stealth', 'Survival', 'Horror', 'Music', 'Party',
+            'Educational', 'Family', 'Casual', 'Indie', 'Multiplayer',
+            'Single-player', 'Co-op', 'Online', 'Arcade', 'Board Game',
+            'Card Game', 'Turn-based', 'Real-time', 'Open World',
+            'Metroidvania', 'Roguelike', 'Visual Novel', 'Dating Sim',
+            'Экшен', 'Приключение', 'RPG', 'Стратегия', 'Головоломка',
+            'Симулятор', 'Спорт', 'Гонки', 'Бои', 'Платформер',
+            'Шутер', 'Стелс', 'Выживание', 'Ужасы', 'Музыка', 'Вечеринка',
+            'Образовательная', 'Семейная', 'Казуальная', 'Инди', 'Мультиплеер',
+            'Одиночная', 'Кооператив', 'Онлайн', 'Аркада', 'Настольная игра',
+            'Карточная игра', 'Пошаговая', 'Реального времени', 'Открытый мир',
+            'Метроидвания', 'Рогалик', 'Визуальная новелла', 'Симулятор свиданий'
+        ]
+        
+        found_genres = []
+        text_lower = text.lower()
+        
+        for genre in genre_keywords:
+            if genre.lower() in text_lower:
+                found_genres.append(genre)
+        
+        return found_genres
+    
+    def extract_rating_from_page(self, soup):
+        """Извлечение рейтинга со страницы"""
+        
+        # Ищем рейтинг по указанному селектору
+        rating_selectors = [
+            '#fix_tabs_filess > div.tabs_header.content-background-024 > div.rating-game-info.rating-game-user-mini',
+            '.rating',
+            '.game-rating',
+            '.score',
+            '.rating-score'
+        ]
+        
+        for selector in rating_selectors:
+            try:
+                elem = soup.select_one(selector)
+                if elem:
+                    text = elem.get_text().strip()
+                    # Извлекаем числовой рейтинг
+                    import re
+                    match = re.search(r'(\d+(?:\.\d+)?)', text)
+                    if match:
+                        return match.group(1)
+            except Exception:
+                continue
+        
+        return "N/A"
         """Обновить жанры для всех игр из HTML кода"""
         try:
             await update.message.reply_text("🔄 Начинаю обновление жанров для всех игр...")
@@ -289,7 +551,8 @@ class GameTrackerBot:
                 "/games - список всех игр Nintendo Switch с пагинацией по 5 игр.\n"
                 "/search [жанр] - поиск игр по жанру, можно писать жанр просто текстом (например: Экшен, RPG).\n"
                 "/stats - статистика по базе игр и жанрам.\n"
-                "/update_genres - админ-команда: обновить жанры для всех игр с сайта.\n\n"
+                "/update_genres - админ-команда: обновить жанры для всех игр с сайта.\n"
+                "/update_descriptions - админ-команда: обновить полные описания для всех игр с сайта.\n\n"
                 "Как использовать бота:\n"
                 "• В личке, группах и супергруппах можете писать жанр текстом или вызывать команды через слэш.\n"
                 "• В каналах бот отвечает на команды администратора, отправленные как сообщения канала.\n"
@@ -759,6 +1022,7 @@ class GameTrackerBot:
         application.add_handler(CommandHandler("genres", self.genres_command))
         application.add_handler(CommandHandler("games", self.games_command))
         application.add_handler(CommandHandler("update_genres", self.update_genres_command))
+        application.add_handler(CommandHandler("update_descriptions", self.update_descriptions_command))
         application.add_handler(CommandHandler("search", self.search_command))
         application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("stats", self.stats_command))
