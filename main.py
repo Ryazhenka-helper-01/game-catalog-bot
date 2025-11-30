@@ -1118,28 +1118,34 @@ if __name__ == '__main__':
         if len(existing_games) < 100:  # Если игр меньше 100, загружаем из JSON
             print(f"Database has only {len(existing_games)} games. Loading from JSON files...")
             
-            # Используем гарантированное исправление с JSON файлами
+            # Пробуем гарантированное исправление (если есть JSON)
             try:
                 result = guaranteed_railway_fix()
                 if result:
                     print("✅ Games loaded from JSON successfully!")
                 else:
-                    print("❌ JSON loading failed, trying smart parser...")
-                    # Резервный метод
+                    print("❌ JSON loading failed - trying smart parser...")
+                    # Если JSON нет, пробуем умный парсер
                     from smart_game_parser import smart_parse_all_games
-                    fallback_result = asyncio.get_event_loop().run_until_complete(smart_parse_all_games())
+                    fallback_result = smart_parse_all_games()
                     if fallback_result:
                         print("✅ Smart parser successful!")
                     else:
-                        print("❌ Both methods failed")
+                        print("❌ All methods failed")
+                
             except Exception as e:
-                print(f"Error in JSON loading: {e}")
-                print("Trying smart parser as fallback...")
-                from smart_game_parser import smart_parse_all_games
-                fallback_result = asyncio.get_event_loop().run_until_complete(smart_parse_all_games())
-                if fallback_result:
-                    print("✅ Smart parser successful!")
-                else:
+                print(f"Error in guaranteed fix: {e}")
+                print("❌ JSON loading failed - trying smart parser...")
+                # Если JSON нет или ошибка, пробуем умный парсер
+                try:
+                    from smart_game_parser import smart_parse_all_games
+                    fallback_result = smart_parse_all_games()
+                    if fallback_result:
+                        print("✅ Smart parser successful!")
+                    else:
+                        print("❌ All methods failed")
+                except Exception as e2:
+                    print(f"Error in smart parser: {e2}")
                     print("❌ All methods failed")
                 
         else:
@@ -1154,6 +1160,6 @@ if __name__ == '__main__':
         print(f"Error during initial parsing: {e}")
     
     print("Starting bot...")
-    # Запуск бота
+    # Запуск бота (только один раз)
     port = int(os.environ.get('PORT', 8080))
     bot.run()
