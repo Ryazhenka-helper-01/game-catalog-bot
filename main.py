@@ -1089,9 +1089,16 @@ class GameTrackerBot:
         application.run_polling()
 
 if __name__ == '__main__':
-    # Запуск для Railway
+    # Запуск для Railway с защитой от дублирования
     import os
     import asyncio
+    
+    # Защита от запуска нескольких экземпляров
+    try:
+        from single_instance import ensure_single_instance
+        ensure_single_instance()
+    except Exception as e:
+        print(f"Warning: Single instance protection failed: {e}")
     
     # Импортируем функцию гарантированного исправления
     from railway_database_fix import guaranteed_railway_fix
