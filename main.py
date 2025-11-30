@@ -826,16 +826,23 @@ if __name__ == '__main__':
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
         if len(existing_games) < 100:  # Если игр меньше 100, гарантированно загружаем
-            print(f"Database has only {len(existing_games)} games. Running guaranteed loading...")
+            print(f"Database has only {len(existing_games)} games. Running comprehensive loading...")
             
-            # Импортируем и запускаем гарантированную загрузку
-            from ensure_games_loaded import ensure_games_loaded
-            result = asyncio.get_event_loop().run_until_complete(ensure_games_loaded())
+            # Импортируем и запускаем комплексную загрузку
+            from comprehensive_game_parser import parse_all_games_comprehensive
+            result = asyncio.get_event_loop().run_until_complete(parse_all_games_comprehensive())
             
             if result:
                 print("✅ Games loaded successfully!")
             else:
-                print("❌ Failed to load games")
+                print("❌ Failed to load games, trying fallback...")
+                # Резервный метод
+                from ensure_games_loaded import ensure_games_loaded
+                fallback_result = asyncio.get_event_loop().run_until_complete(ensure_games_loaded())
+                if fallback_result:
+                    print("✅ Fallback loading successful!")
+                else:
+                    print("❌ Both methods failed")
                 
         else:
             print(f"Database already has {len(existing_games)} games. Skipping initial parsing.")
