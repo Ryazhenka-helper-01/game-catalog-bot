@@ -1201,73 +1201,77 @@ if __name__ == '__main__':
         # АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ ОПИСАНИЙ ПРИ ЗАПУСКЕ
         print("🔄 Starting automatic description updates...")
         try:
-            games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
-            if games:
-                print(f"📊 Found {len(games)} games. Starting automatic description updates...")
-                
-                updated_count = 0
-                failed_count = 0
-                
-                async with bot.parser:
-                    for i, game in enumerate(games):
-                        try:
-                            game_url = game.get('url')
-                            game_title = game.get('title', 'Unknown')
+            async def update_descriptions_automatically():
+                games = await bot.db.get_all_games()
+                if games:
+                    print(f"📊 Found {len(games)} games. Starting automatic description updates...")
+                    
+                    updated_count = 0
+                    failed_count = 0
+                    
+                    async with bot.parser:
+                        for i, game in enumerate(games):
+                            try:
+                                game_url = game.get('url')
+                                game_title = game.get('title', 'Unknown')
+                                
+                                if not game_url or game_url == bot.parser.base_url:
+                                    failed_count += 1
+                                    continue
+                                
+                                # Загружаем страницу игры
+                                html = await bot.parser.get_page(game_url)
+                                if not html:
+                                    failed_count += 1
+                                    continue
+                                
+                                from bs4 import BeautifulSoup
+                                soup = BeautifulSoup(html, 'html.parser')
+                                
+                                # Извлекаем полное описание
+                                full_description = bot.extract_full_description(soup)
+                                
+                                # Извлекаем жанры
+                                genres = bot.extract_genres_from_page(soup)
+                                
+                                # Извлекаем рейтинг
+                                rating = bot.extract_rating_from_page(soup)
+                                
+                                # Обновляем игру в базе
+                                updated_game = {
+                                    'description': full_description,
+                                    'genres': genres,
+                                    'rating': rating
+                                }
+                                
+                                await bot.db.update_game(game['id'], updated_game)
+                                updated_count += 1
+                                
+                                # Небольшая задержка между запросами
+                                if i < len(games) - 1:
+                                    await asyncio.sleep(0.5)
+                                
+                                # Показываем прогресс каждые 50 игр
+                                if (i + 1) % 50 == 0:
+                                    print(f"📈 Processed {i+1}/{len(games)} games...")
                             
-                            if not game_url or game_url == bot.parser.base_url:
+                            except Exception as e:
                                 failed_count += 1
+                                print(f"Error updating game {game.get('title', 'Unknown')}: {e}")
                                 continue
-                            
-                            # Загружаем страницу игры
-                            html = await bot.parser.get_page(game_url)
-                            if not html:
-                                failed_count += 1
-                                continue
-                            
-                            from bs4 import BeautifulSoup
-                            soup = BeautifulSoup(html, 'html.parser')
-                            
-                            # Извлекаем полное описание
-                            full_description = bot.extract_full_description(soup)
-                            
-                            # Извлекаем жанры
-                            genres = bot.extract_genres_from_page(soup)
-                            
-                            # Извлекаем рейтинг
-                            rating = bot.extract_rating_from_page(soup)
-                            
-                            # Обновляем игру в базе
-                            updated_game = {
-                                'description': full_description,
-                                'genres': genres,
-                                'rating': rating
-                            }
-                            
-                            await bot.db.update_game(game['id'], updated_game)
-                            updated_count += 1
-                            
-                            # Небольшая задержка между запросами
-                            if i < len(games) - 1:
-                                await asyncio.sleep(0.5)
-                            
-                            # Показываем прогресс каждые 50 игр
-                            if (i + 1) % 50 == 0:
-                                print(f"📈 Processed {i+1}/{len(games)} games...")
-                        
-                        except Exception as e:
-                            failed_count += 1
-                            print(f"Error updating game {game.get('title', 'Unknown')}: {e}")
-                            continue
-                
-                # Финальная статистика
-                print(f"✅ **Automatic description update completed!**")
-                print(f"📊 **Statistics:**")
-                print(f"🎮 Total games: {len(games)}")
-                print(f"✅ Updated: {updated_count}")
-                print(f"❌ Skipped: {failed_count}")
-                print(f"🎯 Descriptions are now fresh from div.full-story!")
-            else:
-                print("❌ No games found in database")
+                    
+                    # Финальная статистика
+                    print(f"✅ **Automatic description update completed!**")
+                    print(f"📊 **Statistics:**")
+                    print(f"🎮 Total games: {len(games)}")
+                    print(f"✅ Updated: {updated_count}")
+                    print(f"❌ Skipped: {failed_count}")
+                    print(f"🎯 Descriptions are now fresh from div.full-story!")
+                else:
+                    print("❌ No games found in database")
+            
+            # Запускаем async функцию
+            asyncio.get_event_loop().run_until_complete(update_descriptions_automatically())
                 
         except Exception as e:
             print(f"❌ Error during automatic description updates: {e}")
