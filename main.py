@@ -1211,8 +1211,13 @@ if __name__ == '__main__':
                     
                     for i, game in enumerate(games):
                         try:
-                            game_url = game.get('url')
-                            game_title = game.get('title', 'Unknown')
+                            # Проверяем что game не None
+                            if not game:
+                                failed_count += 1
+                                continue
+                                
+                            game_url = game.get('url') if game else None
+                            game_title = game.get('title', 'Unknown') if game else 'Unknown'
                             
                             if not game_url or game_url == bot.parser.base_url:
                                 failed_count += 1
@@ -1228,13 +1233,13 @@ if __name__ == '__main__':
                             soup = BeautifulSoup(html, 'html.parser')
                             
                             # Извлекаем полное описание
-                            full_description = bot.extract_full_description(soup)
+                            full_description = bot.parser.extract_full_description(soup)
                             
                             # Извлекаем жанры
-                            genres = bot.extract_genres_from_page(soup)
+                            genres = bot.parser.extract_genres_from_page(soup)
                             
                             # Извлекаем рейтинг
-                            rating = bot.extract_rating_from_page(soup)
+                            rating = bot.parser.extract_rating_from_page(soup)
                             
                             # Обновляем игру в базе
                             updated_game = {
@@ -1256,7 +1261,8 @@ if __name__ == '__main__':
                         
                         except Exception as e:
                             failed_count += 1
-                            print(f"Error updating game {game.get('title', 'Unknown')}: {e}")
+                            game_title = game.get('title', 'Unknown') if game else 'Unknown'
+                            print(f"Error updating game {game_title}: {e}")
                             continue
                     
                     # Финальная статистика
