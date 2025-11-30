@@ -826,11 +826,11 @@ if __name__ == '__main__':
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
         if len(existing_games) < 100:  # Если игр меньше 100, гарантированно загружаем
-            print(f"Database has only {len(existing_games)} games. Running comprehensive loading...")
+            print(f"Database has only {len(existing_games)} games. Running smart loading...")
             
-            # Импортируем и запускаем комплексную загрузку
-            from comprehensive_game_parser import parse_all_games_comprehensive
-            result = asyncio.get_event_loop().run_until_complete(parse_all_games_comprehensive())
+            # Импортируем и запускаем умную загрузку
+            from smart_game_parser import smart_parse_all_games
+            result = asyncio.get_event_loop().run_until_complete(smart_parse_all_games())
             
             if result:
                 print("✅ Games loaded successfully!")
