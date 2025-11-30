@@ -285,7 +285,25 @@ class GameTrackerBot:
     def extract_full_description(self, soup):
         """Извлечение полного описания со всеми параграфами"""
         
-        # Способ 1: Ищем контейнер по указанному пути
+        # Способ 1: Ищем все параграфы в article (основной метод)
+        try:
+            article = soup.find('article')
+            if article:
+                paragraphs = article.find_all('p')
+                texts = []
+                for p in paragraphs:
+                    text = p.get_text().strip()
+                    if text and len(text) > 20:  # Пропускаем очень короткие параграфы
+                        texts.append(text)
+                
+                if texts:
+                    full_text = "\n\n".join(texts)
+                    if len(full_text) > 100:  # Проверяем, что описание достаточно длинное
+                        return full_text
+        except Exception:
+            pass
+        
+        # Способ 2: Ищем контейнер по указанному пути (резервный)
         selectors = [
             'body > section.wrap.cf > section > div > div > article > div:nth-of-type(5) > div:nth-of-type(2) > div > div > div:nth-of-type(1) > div:nth-of-type(2) > main',
             'article div.description-container main',
@@ -317,25 +335,7 @@ class GameTrackerBot:
             except Exception:
                 continue
         
-        # Способ 2: Ищем все параграфы в статье
-        try:
-            article = soup.find('article')
-            if article:
-                paragraphs = article.find_all('p')
-                texts = []
-                for p in paragraphs:
-                    text = p.get_text().strip()
-                    if text and len(text) > 10:
-                        texts.append(text)
-                
-                if texts:
-                    full_text = "\n\n".join(texts)
-                    if len(full_text) > 100:
-                        return full_text
-        except Exception:
-            pass
-        
-        # Способ 3: Ищем по классам описания
+        # Способ 3: Ищем по классам описания (резервный)
         description_selectors = [
             '.description',
             '.game-description', 
