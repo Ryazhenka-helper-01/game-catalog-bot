@@ -323,9 +323,6 @@ class Database:
                         set_clauses.append('url = ?')
                         values.append(game_data['url'])
                     
-                    # updated_at обновляется автоматически через DEFAULT CURRENT_TIMESTAMP,
-                    # но если колонка уже есть и мы хотим явно обновить время:
-                    set_clauses.append('updated_at = CURRENT_TIMESTAMP')
                     values.append(game_id)
                     
                     if set_clauses:
