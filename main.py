@@ -455,6 +455,8 @@ class GameTrackerBot:
                 continue
         
         return "N/A"
+    
+    async def update_genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обновить жанры для всех игр из HTML кода"""
         try:
             await update.message.reply_text("🔄 Начинаю обновление жанров для всех игр...")
