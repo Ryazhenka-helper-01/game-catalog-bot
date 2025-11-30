@@ -72,12 +72,17 @@ class GameTrackerBot:
             )
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Показать все доступные жанры в виде кнопок"""
+        """Показать список жанров"""
         try:
             genres = await self.db.get_all_genres()
             
             if not genres:
-                await update.message.reply_text("🎮 Жанры пока не загружены. Попробуйте позже.")
+                await update.message.reply_text(
+                    "🎮 **Жанры пока не загружены.**\n\n"
+                    "База данных пуста, игры загружаются...\n"
+                    "Попробуйте через несколько минут.",
+                    parse_mode='Markdown'
+                )
                 return
             
             # Создаем кнопки для жанров
@@ -307,6 +312,26 @@ class GameTrackerBot:
             all_genres = await self.db.get_all_genres()
             
             games_with_genres = [game for game in all_games if game.get('genres')]
+            
+            # Если база пустая
+            if len(all_games) == 0:
+                stats_text = """
+📊 **СТАТИСТИКА БОТА**
+
+🎮 **Игры в базе:** 0
+🏷️ **С жанрами:** 0 (0.0%)
+🎯 **Уникальных жанров:** 0
+
+📈 **ТОП-10 ЖАНРОВ:**
+   База данных пуста. Игры загружаются...
+
+📱 **Версия:** beta-1.1.1
+🔗 **Источник:** asst2game.ru
+🚀 **Статус:** Инициализация
+                """
+                await update.message.reply_text(stats_text, parse_mode='Markdown')
+                logger.info(f"User {update.effective_user.id} requested stats - database empty")
+                return
             
             # Считаем топ жанры
             genre_counts = {}
