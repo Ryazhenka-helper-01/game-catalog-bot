@@ -796,23 +796,41 @@ if __name__ == '__main__':
         # Сначала проверим, есть ли игры в базе
         existing_games = asyncio.get_event_loop().run_until_complete(bot.db.get_all_games())
         
-        if len(existing_games) < 500:  # Если игр меньше 500, ГАРАНТИРОВАННО исправляем базу
-            print(f"Database has only {len(existing_games)} games. GUARANTEED FIX REQUIRED!")
+        if len(existing_games) < 500:  # Если игр меньше 500, парсим с сайта
+            print(f"Database has only {len(existing_games)} games. Starting fresh parsing...")
             
-            # ГАРАНТИРОВАННОЕ исправление базы
+            # Пробуем гарантированное исправление (если есть JSON)
             try:
-                # Выполняем гарантированное исправление
                 result = guaranteed_railway_fix()
-                
                 if result:
                     print("GUARANTEED FIX SUCCESSFUL!")
                 else:
-                    print("GUARANTEED FIX FAILED!")
-                    exit(1)
+                    print("GUARANTEED FIX FAILED - falling back to site parsing")
+                    # Если JSON нет, парсим с сайта
+                    print("Parsing games from site...")
+                    games = asyncio.get_event_loop().run_until_complete(bot.parser.parse_all_games())
+                    print(f"Parsed {len(games)} games from site")
+                    
+                    # Сохраняем в базу
+                    for game in games:
+                        asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
+                    
+                    print(f"Saved {len(games)} games to database")
                     
             except Exception as e:
                 print(f"Error in guaranteed fix: {e}")
-                exit(1)
+                print("Falling back to site parsing...")
+                
+                # Если JSON нет или ошибка, парсим с сайта
+                print("Parsing games from site...")
+                games = asyncio.get_event_loop().run_until_complete(bot.parser.parse_all_games())
+                print(f"Parsed {len(games)} games from site")
+                
+                # Сохраняем в базу
+                for game in games:
+                    asyncio.get_event_loop().run_until_complete(bot.db.add_game(game))
+                
+                print(f"Saved {len(games)} games to database")
         
         else:
             # Если игр достаточно, обновляем детали
