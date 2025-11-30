@@ -143,10 +143,16 @@ class GameParser:
     
     async def parse_game_list(self) -> List[Dict]:
         """Парсинг списка игр с главной страницы"""
+        logger.info("Starting game list parsing...")
+        print("Starting game list parsing...")
+        
         html = await self.get_page(self.base_url)
         if not html:
+            logger.error("Failed to get page HTML")
+            print("Failed to get page HTML")
             return []
         
+        logger.info("Page HTML received, parsing...")
         soup = BeautifulSoup(html, 'html.parser')
         games = []
         
@@ -171,6 +177,7 @@ class GameParser:
             elements = soup.select(selector)
             if elements:
                 game_elements = elements
+                logger.info(f"Found {len(elements)} elements with selector: {selector}")
                 print(f"Found {len(elements)} elements with selector: {selector}")
                 break
         
@@ -178,18 +185,25 @@ class GameParser:
         if not game_elements:
             links = soup.find_all('a', href=True)
             game_elements = [link for link in links if 'nintendo-switch' in link.get('href', '') or 'game' in link.get('href', '')]
+            logger.info(f"Found {len(game_elements)} links containing nintendo-switch or game")
             print(f"Found {len(game_elements)} links containing nintendo-switch or game")
         
-        for element in game_elements:
+        logger.info(f"Processing {len(game_elements)} game elements...")
+        print(f"Processing {len(game_elements)} game elements...")
+        
+        for i, element in enumerate(game_elements):
             try:
                 game = await self.parse_game_element(element)
                 if game and game.get('title'):
                     games.append(game)
-                    print(f"Parsed game: {game.get('title', 'Unknown')}")
+                    logger.info(f"[{i+1}/{len(game_elements)}] Parsed game: {game.get('title', 'Unknown')}")
+                    print(f"[{i+1}/{len(game_elements)}] Parsed game: {game.get('title', 'Unknown')}")
             except Exception as e:
-                logger.error(f"Error parsing game element: {e}")
+                logger.error(f"Error parsing game element {i+1}: {e}")
+                print(f"Error parsing game element {i+1}: {e}")
                 continue
         
+        logger.info(f"Total games parsed: {len(games)}")
         print(f"Total games parsed: {len(games)}")
         return games
     

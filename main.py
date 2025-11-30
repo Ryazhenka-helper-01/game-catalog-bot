@@ -833,7 +833,7 @@ if __name__ == '__main__':
                     print("GUARANTEED FIX FAILED - falling back to site parsing")
                     # Если JSON нет, парсим с сайта
                     print("Parsing games from site...")
-                    games = asyncio.get_event_loop().run_until_complete(bot.parser.parse_all_games())
+                    games = asyncio.get_event_loop().run_until_complete(bot.parser.parse_game_list())
                     print(f"Parsed {len(games)} games from site")
                     
                     # Сохраняем в базу
@@ -848,7 +848,7 @@ if __name__ == '__main__':
                 
                 # Если JSON нет или ошибка, парсим с сайта
                 print("Parsing games from site...")
-                games = asyncio.get_event_loop().run_until_complete(bot.parser.parse_all_games())
+                games = asyncio.get_event_loop().run_until_complete(bot.parser.parse_game_list())
                 print(f"Parsed {len(games)} games from site")
                 
                 # Сохраняем в базу
