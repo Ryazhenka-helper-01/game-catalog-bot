@@ -507,15 +507,23 @@ class GameTrackerBot:
                             failed_count += 1
                             continue
                         
-                        # Парсим страницу игры заново с новым методом извлечения жанров
-                        updated_game = await self.parser.parse_game_details(game_url)
+                        # Загружаем страницу игры
+                        html = await self.parser.get_page(game_url)
+                        if not html or html == "":
+                            failed_count += 1
+                            continue
                         
-                        if updated_game and updated_game.get('genres'):
-                            # Обновляем только жанры в существующей игре
-                            new_genres = updated_game.get('genres', [])
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(html, 'html.parser')
+                        
+                        # Извлекаем только жанры, не трогая другие поля
+                        new_genres = self.parser._extract_genres_from_page(soup, game_url)
+                        
+                        if new_genres:
                             old_genres = game.get('genres', [])
                             
                             if new_genres != old_genres:
+                                # Обновляем только жанры, сохраняя описание и другие поля
                                 await self.db.update_game_genres(game['id'], new_genres)
                                 updated_count += 1
                                 
