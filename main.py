@@ -876,12 +876,7 @@ class GameTrackerBot:
                 if len(paragraphs) > 2:
                     # Показываем только первые 2 абзаца
                     short_description = '\n\n'.join(paragraphs[:2])
-                    message_text += f"� **Описание:**\n{short_description}\n\n"
-                    
-                    # Сохраняем полное описание в памяти для кнопки
-                    full_desc_for_button = '\n\n'.join(paragraphs)
-                    self._temp_full_descriptions = getattr(self, '_temp_full_descriptions', {})
-                    self._temp_full_descriptions[game_id] = full_desc_for_button
+                    message_text += f"📝 **Описание:**\n{short_description}\n\n"
                 else:
                     # Если абзацев 2 или меньше, показываем все
                     message_text += f"📝 **Описание:**\n{full_description}\n\n"
@@ -955,26 +950,24 @@ class GameTrackerBot:
     async def handle_read_more(self, query, game_id: int, context: ContextTypes.DEFAULT_TYPE | None = None):
         """Обработчик кнопки 'Читать далее'"""
         try:
-            # Получаем полное описание из временного хранилища
-            full_descriptions = getattr(self, '_temp_full_descriptions', {})
-            full_description = full_descriptions.get(str(game_id), "")
-            
-            if not full_description:
-                await query.answer("Описание не найдено")
-                return
-            
-            # Получаем информацию об игре для заголовка
+            # Получаем игру напрямую из базы данных
             game = await self.db.get_game_by_id(game_id)
             if not game:
                 await query.answer("Игра не найдена")
                 return
             
             title = game.get('title', 'Без названия')
+            description = game.get('description', 'Описание отсутствует')
+            url = game.get('url', '')
+            
+            if not description or description == 'Описание отсутствует':
+                await query.answer("Полное описание отсутствует")
+                return
             
             # Формируем полное описание
             message_text = f"📖 **Полное описание игры {title}**\n\n"
-            message_text += f"📝 **Описание:**\n{full_description}\n\n"
-            message_text += f"🔗 **Источник:** [Игры Nintendo Switch]({game.get('url', '')})"
+            message_text += f"📝 **Описание:**\n{description}\n\n"
+            message_text += f"🔗 **Источник:** [Игры Nintendo Switch]({url})"
             
             # Telegram ограничивает сообщение ~4096 символами
             if len(message_text) > 4000:
