@@ -229,14 +229,14 @@ class GameTrackerBot:
                         soup = BeautifulSoup(html, 'html.parser')
                         
                         # Извлекаем полное описание
-                        full_description = self.extract_full_description(soup)
+                        full_description = self.parser.extract_description(soup)
                         
                         # Извлекаем жанры (сохраняем существующие если новые не найдены)
-                        new_genres = self.extract_genres_from_page(soup)
+                        new_genres = self.parser.extract_genres_from_page(soup)
                         genres = new_genres if new_genres else game.get('genres', [])
                         
                         # Извлекаем рейтинг (сохраняем существующий если новый не найден)
-                        new_rating = self.extract_rating_from_page(soup)
+                        new_rating = self.parser.extract_rating_from_page(soup)
                         rating = new_rating if new_rating else game.get('rating', 'N/A')
                         
                         # Обновляем игру в базе
@@ -1255,7 +1255,7 @@ if __name__ == '__main__':
                         soup = BeautifulSoup(html, 'html.parser')
                         
                         # Извлекаем полное описание
-                        full_description = bot.parser.extract_full_description(soup)
+                        full_description = bot.parser.extract_description(soup)
                         
                         # Извлекаем жанры (сохраняем существующие если новые не найдены)
                         new_genres = bot.parser.extract_genres_from_page(soup)
