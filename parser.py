@@ -39,6 +39,11 @@ class GameParser:
             logger.error(f"Invalid URL: {url}")
             return None
         
+        # Проверяем что сессия существует
+        if not self.session:
+            logger.error(f"Session is None, cannot fetch {url}")
+            return None
+        
         # Проверяем кэш
         if use_cache and request_cache:
             cached_content = request_cache.get(url)

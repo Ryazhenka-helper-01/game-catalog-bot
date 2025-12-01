@@ -218,7 +218,9 @@ class GameTrackerBot:
                             continue
                         
                         # Загружаем страницу игры
-                        html = await self.parser.get_page(game_url)
+                        async with self.parser:
+                            html = await self.parser.get_page(game_url)
+                        
                         if not html or html == "":
                             failed_count += 1
                             continue
@@ -1242,7 +1244,9 @@ if __name__ == '__main__':
                             continue
                         
                         # Загружаем страницу игры
-                        html = await bot.parser.get_page(game_url)
+                        async with bot.parser:
+                            html = await bot.parser.get_page(game_url)
+                        
                         if not html or html == "":
                             failed_count += 1
                             continue
