@@ -1191,30 +1191,30 @@ if __name__ == '__main__':
                     print(f"Error in smart parser: {e2}")
                     print("❌ All methods failed")
         
-        # Проверяем, нужно ли обновлять описания (однократно)
+        # Проверяем, нужно ли обновлять описания (однократно с сохранением в файл)
         print("🔄 Checking if description updates are needed...")
         try:
-            async def check_and_update_descriptions():
+            import os
+            import time
+            from datetime import datetime
+            
+            # Проверяем файл-флаг
+            flag_file = "descriptions_updated.flag"
+            
+            if os.path.exists(flag_file):
+                print("✅ Descriptions already updated. Skipping automatic update.")
+                # Проверяем время файла (не старше 7 дней)
+                file_age = time.time() - os.path.getmtime(flag_file)
+                if file_age < 7 * 24 * 3600:  # 7 дней
+                    print(f"📅 Flag file is {int(file_age/3600)} hours old. Update skipped.")
+                else:
+                    print("📅 Flag file is older than 7 days. Forcing update...")
+                    os.remove(flag_file)
+                if os.path.exists(flag_file):
+                    return
+            
+            async def update_descriptions_once():
                 try:
-                    # Создаем таблицу для флагов если ее нет
-                    await bot.db.execute("""
-                        CREATE TABLE IF NOT EXISTS bot_flags (
-                            flag_name TEXT PRIMARY KEY,
-                            flag_value TEXT,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                    
-                    # Проверяем флаг обновления описаний
-                    flag_result = await bot.db.fetch_one(
-                        "SELECT flag_value FROM bot_flags WHERE flag_name = 'descriptions_updated'"
-                    )
-                    
-                    if flag_result and flag_result['flag_value'] == 'yes':
-                        print("✅ Descriptions already updated. Skipping automatic update.")
-                        return
-                    
-                    # Если флага нет или он не 'yes', обновляем описания
                     print("📊 First run detected. Starting description updates...")
                     
                     games = await bot.db.get_all_games()
@@ -1281,11 +1281,11 @@ if __name__ == '__main__':
                             print(f"Error updating game {game_title}: {e}")
                             continue
                     
-                    # Устанавливаем флаг, что описания обновлены
-                    await bot.db.execute("""
-                        INSERT OR REPLACE INTO bot_flags (flag_name, flag_value, updated_at)
-                        VALUES ('descriptions_updated', 'yes', CURRENT_TIMESTAMP)
-                    """)
+                    # Создаем файл-флаг
+                    with open(flag_file, 'w') as f:
+                        f.write(f"Descriptions updated on {datetime.now().isoformat()}\n")
+                        f.write(f"Updated: {updated_count} games\n")
+                        f.write(f"Skipped: {failed_count} games\n")
                     
                     # Финальная статистика
                     print(f"✅ **One-time description update completed!**")
@@ -1295,12 +1295,13 @@ if __name__ == '__main__':
                     print(f"❌ Skipped: {failed_count}")
                     print(f"🎯 Descriptions are now fresh from div.full-story!")
                     print(f"🔒 This update will not run again automatically.")
+                    print(f"📁 Flag file created: {flag_file}")
                 
                 except Exception as e:
                     print(f"❌ Error in description update system: {e}")
             
-            # Запускаем проверку и обновление
-            asyncio.get_event_loop().run_until_complete(check_and_update_descriptions())
+            # Запускаем обновление
+            asyncio.get_event_loop().run_until_complete(update_descriptions_once())
                 
         except Exception as e:
             print(f"❌ Error during description update check: {e}")
