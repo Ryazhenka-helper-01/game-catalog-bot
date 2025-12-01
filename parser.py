@@ -40,7 +40,7 @@ class GameParser:
             return None
         
         # Проверяем кэш
-        if use_cache:
+        if use_cache and request_cache:
             cached_content = request_cache.get(url)
             if cached_content:
                 logger.debug(f"Using cached content for {url}")
@@ -58,7 +58,11 @@ class GameParser:
             
             async with self.session.get(url, headers=headers, timeout=30) as response:
                 if response.status == 200:
-                    return await response.text()
+                    content = await response.text()
+                    # Сохраняем в кэш
+                    if use_cache and request_cache:
+                        request_cache.set(url, content)
+                    return content
                 else:
                     logger.error(f"HTTP {response.status} for {url}")
                     return ""
