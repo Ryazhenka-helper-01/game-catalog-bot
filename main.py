@@ -1198,110 +1198,107 @@ if __name__ == '__main__':
             import time
             from datetime import datetime
             
-            # Проверяем файл-флаг
-            flag_file = "descriptions_updated.flag"
-            
-            if os.path.exists(flag_file):
-                print("✅ Descriptions already updated. Skipping automatic update.")
-                # Проверяем время файла (не старше 7 дней)
-                file_age = time.time() - os.path.getmtime(flag_file)
-                if file_age < 7 * 24 * 3600:  # 7 дней
-                    print(f"📅 Flag file is {int(file_age/3600)} hours old. Update skipped.")
-                else:
-                    print("📅 Flag file is older than 7 days. Forcing update...")
-                    os.remove(flag_file)
-                if os.path.exists(flag_file):
-                    return
-            
-            async def update_descriptions_once():
-                try:
-                    print("📊 First run detected. Starting description updates...")
-                    
-                    games = await bot.db.get_all_games()
-                    if not games:
-                        print("❌ No games found in database")
-                        return
-                    
-                    updated_count = 0
-                    failed_count = 0
-                    
-                    for i, game in enumerate(games):
-                        try:
-                            # Проверяем что game не None
-                            if not game:
-                                failed_count += 1
-                                continue
-                                
-                            game_url = game.get('url') if game else None
-                            game_title = game.get('title', 'Unknown') if game else 'Unknown'
-                            
-                            if not game_url or game_url == bot.parser.base_url:
-                                failed_count += 1
-                                continue
-                            
-                            # Загружаем страницу игры
-                            html = await bot.parser.get_page(game_url)
-                            if not html:
-                                failed_count += 1
-                                continue
-                            
-                            from bs4 import BeautifulSoup
-                            soup = BeautifulSoup(html, 'html.parser')
-                            
-                            # Извлекаем полное описание
-                            full_description = bot.parser.extract_full_description(soup)
-                            
-                            # Извлекаем жанры
-                            genres = bot.parser.extract_genres_from_page(soup)
-                            
-                            # Извлекаем рейтинг
-                            rating = bot.parser.extract_rating_from_page(soup)
-                            
-                            # Обновляем игру в базе
-                            updated_game = {
-                                'description': full_description,
-                                'genres': genres,
-                                'rating': rating
-                            }
-                            
-                            await bot.db.update_game(game['id'], updated_game)
-                            updated_count += 1
-                            
-                            # Небольшая задержка между запросами
-                            if i < len(games) - 1:
-                                await asyncio.sleep(0.5)
-                            
-                            # Показываем прогресс каждые 50 игр
-                            if (i + 1) % 50 == 0:
-                                print(f"📈 Processed {i+1}/{len(games)} games...")
-                        
-                        except Exception as e:
-                            failed_count += 1
-                            game_title = game.get('title', 'Unknown') if game else 'Unknown'
-                            print(f"Error updating game {game_title}: {e}")
-                            continue
-                    
-                    # Создаем файл-флаг
-                    with open(flag_file, 'w') as f:
-                        f.write(f"Descriptions updated on {datetime.now().isoformat()}\n")
-                        f.write(f"Updated: {updated_count} games\n")
-                        f.write(f"Skipped: {failed_count} games\n")
-                    
-                    # Финальная статистика
-                    print(f"✅ **One-time description update completed!**")
-                    print(f"📊 **Statistics:**")
-                    print(f"🎮 Total games: {len(games)}")
-                    print(f"✅ Updated: {updated_count}")
-                    print(f"❌ Skipped: {failed_count}")
-                    print(f"🎯 Descriptions are now fresh from div.full-story!")
-                    print(f"🔒 This update will not run again automatically.")
-                    print(f"📁 Flag file created: {flag_file}")
+            async def check_and_update_descriptions():
+                # Проверяем файл-флаг
+                flag_file = "descriptions_updated.flag"
                 
-                except Exception as e:
-                    print(f"❌ Error in description update system: {e}")
+                if os.path.exists(flag_file):
+                    print("✅ Descriptions already updated. Skipping automatic update.")
+                    # Проверяем время файла (не старше 7 дней)
+                    file_age = time.time() - os.path.getmtime(flag_file)
+                    if file_age < 7 * 24 * 3600:  # 7 дней
+                        print(f"📅 Flag file is {int(file_age/3600)} hours old. Update skipped.")
+                        return  # Выходим из функции
+                    else:
+                        print("📅 Flag file is older than 7 days. Forcing update...")
+                        os.remove(flag_file)
+                    if os.path.exists(flag_file):
+                        return  # Выходим из функции
+                
+                print("📊 First run detected. Starting description updates...")
+                
+                games = await bot.db.get_all_games()
+                if not games:
+                    print("❌ No games found in database")
+                    return
+                
+                updated_count = 0
+                failed_count = 0
+                
+                for i, game in enumerate(games):
+                    try:
+                        # Проверяем что game не None
+                        if not game:
+                            failed_count += 1
+                            continue
+                            
+                        game_url = game.get('url') if game else None
+                        game_title = game.get('title', 'Unknown') if game else 'Unknown'
+                        
+                        if not game_url or game_url == bot.parser.base_url:
+                            failed_count += 1
+                            continue
+                        
+                        # Загружаем страницу игры
+                        html = await bot.parser.get_page(game_url)
+                        if not html:
+                            failed_count += 1
+                            continue
+                        
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(html, 'html.parser')
+                        
+                        # Извлекаем полное описание
+                        full_description = bot.parser.extract_full_description(soup)
+                        
+                        # Извлекаем жанры
+                        genres = bot.parser.extract_genres_from_page(soup)
+                        
+                        # Извлекаем рейтинг
+                        rating = bot.parser.extract_rating_from_page(soup)
+                        
+                        # Обновляем игру в базе
+                        updated_game = {
+                            'description': full_description,
+                            'genres': genres,
+                            'rating': rating
+                        }
+                        
+                        await bot.db.update_game(game['id'], updated_game)
+                        updated_count += 1
+                        
+                        # Небольшая задержка между запросами
+                        if i < len(games) - 1:
+                            await asyncio.sleep(0.5)
+                        
+                        # Показываем прогресс каждые 50 игр
+                        if (i + 1) % 50 == 0:
+                            print(f"📈 Processed {i+1}/{len(games)} games...")
+                    
+                    except Exception as e:
+                        failed_count += 1
+                        game_title = game.get('title', 'Unknown') if game else 'Unknown'
+                        print(f"Error updating game {game_title}: {e}")
+                        continue
+                
+                # Создаем файл-флаг
+                with open(flag_file, 'w') as f:
+                    f.write(f"Descriptions updated on {datetime.now().isoformat()}\n")
+                    f.write(f"Updated: {updated_count} games\n")
+                    f.write(f"Skipped: {failed_count} games\n")
+                
+                # Финальная статистика
+                print(f"✅ **One-time description update completed!**")
+                print(f"📊 **Statistics:**")
+                print(f"🎮 Total games: {len(games)}")
+                print(f"✅ Updated: {updated_count}")
+                print(f"❌ Skipped: {failed_count}")
+                print(f"🎯 Descriptions are now fresh from div.full-story!")
+                print(f"🔒 This update will not run again automatically.")
+                print(f"📁 Flag file created: {flag_file}")
             
-            # Запускаем обновление
-            asyncio.get_event_loop().run_until_complete(update_descriptions_once())
+            # Запускаем проверку и обновление
+            asyncio.get_event_loop().run_until_complete(check_and_update_descriptions())
                 
         except Exception as e:
             print(f"❌ Error during description update check: {e}")
