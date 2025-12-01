@@ -75,6 +75,10 @@ class GameParser:
             return None
         except Exception as e:
             logger.error(f"Unexpected error fetching {url}: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"Error args: {e.args}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
     def clean_text(self, text: str) -> str:
