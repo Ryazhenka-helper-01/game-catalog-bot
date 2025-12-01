@@ -1319,15 +1319,61 @@ if __name__ == '__main__':
     # Запуск бота (только один раз) с настройками для Railway
     port = int(os.environ.get('PORT', 8080))
     
-    # Добавляем дополнительные настройки для предотвращения конфликтов
+    # Улучшенная защита от конфликтов с файловой блокировкой
+    lock_file = f"bot_instance_{bot_instance_id}.lock"
+    
     try:
-        print(f"Bot instance {bot_instance_id} starting...")
-        bot.run()
+        # Проверяем, есть ли другие экземпляры
+        import glob
+        existing_locks = glob.glob("bot_instance_*.lock")
+        if existing_locks:
+            print(f"⚠️ Found existing lock files: {existing_locks}")
+            # Удаляем старые lock файлы (старше 10 минут)
+            import time
+            current_time = time.time()
+            for lock in existing_locks:
+                try:
+                    file_age = current_time - os.path.getmtime(lock)
+                    if file_age > 600:  # 10 минут
+                        os.remove(lock)
+                        print(f"🧹 Removed old lock file: {lock}")
+                    else:
+                        print(f"🔒 Another bot instance is running (lock: {lock}, age: {int(file_age)}s)")
+                        print("Exiting to prevent conflicts...")
+                        exit(0)
+                except:
+                    pass
+        
+        # Создаем свой lock файл
+        with open(lock_file, 'w') as f:
+            f.write(f"Bot instance {bot_instance_id} started at {time.time()}\n")
+        
+        print(f"🚀 Bot instance {bot_instance_id} starting...")
+        print(f"🔒 Lock file created: {lock_file}")
+        
+        try:
+            bot.run()
+        finally:
+            # Удаляем lock файл при выходе
+            try:
+                os.remove(lock_file)
+                print(f"🔓 Lock file removed: {lock_file}")
+            except:
+                pass
+                
     except Exception as e:
-        print(f"Bot instance {bot_instance_id} error: {e}")
+        print(f"❌ Bot instance {bot_instance_id} error: {e}")
+        # Удаляем lock файл при ошибке
+        try:
+            os.remove(lock_file)
+            print(f"🔓 Lock file removed due to error: {lock_file}")
+        except:
+            pass
+        
         # Если конфликт, ждем и выходим
         if "Conflict" in str(e):
-            print("Conflict detected, another instance is running. Exiting...")
+            print("🔄 Conflict detected, another instance is running. Exiting...")
             time.sleep(5)
+            exit(1)
         else:
             raise
