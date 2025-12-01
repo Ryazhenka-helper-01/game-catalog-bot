@@ -229,11 +229,13 @@ class GameTrackerBot:
                         # Извлекаем полное описание
                         full_description = self.extract_full_description(soup)
                         
-                        # Извлекаем жанры
-                        genres = self.extract_genres_from_page(soup)
+                        # Извлекаем жанры (сохраняем существующие если новые не найдены)
+                        new_genres = self.extract_genres_from_page(soup)
+                        genres = new_genres if new_genres else game.get('genres', [])
                         
-                        # Извлекаем рейтинг
-                        rating = self.extract_rating_from_page(soup)
+                        # Извлекаем рейтинг (сохраняем существующий если новый не найден)
+                        new_rating = self.extract_rating_from_page(soup)
+                        rating = new_rating if new_rating else game.get('rating', 'N/A')
                         
                         # Обновляем игру в базе
                         updated_game = {
@@ -1251,11 +1253,13 @@ if __name__ == '__main__':
                         # Извлекаем полное описание
                         full_description = bot.parser.extract_full_description(soup)
                         
-                        # Извлекаем жанры
-                        genres = bot.parser.extract_genres_from_page(soup)
+                        # Извлекаем жанры (сохраняем существующие если новые не найдены)
+                        new_genres = bot.parser.extract_genres_from_page(soup)
+                        genres = new_genres if new_genres else game.get('genres', [])
                         
-                        # Извлекаем рейтинг
-                        rating = bot.parser.extract_rating_from_page(soup)
+                        # Извлекаем рейтинг (сохраняем существующий если новый не найден)
+                        new_rating = bot.parser.extract_rating_from_page(soup)
+                        rating = new_rating if new_rating else game.get('rating', 'N/A')
                         
                         # Обновляем игру в базе
                         updated_game = {
