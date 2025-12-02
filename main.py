@@ -517,12 +517,20 @@ class GameTrackerBot:
                         soup = BeautifulSoup(html, 'html.parser')
                         
                         # Извлекаем только жанры, не трогая другие поля
+                        old_description = game.get('description', '')
                         new_genres = self.parser._extract_genres_from_page(soup, game_url)
                         
                         if new_genres:
                             old_genres = game.get('genres', [])
                             
                             if new_genres != old_genres:
+                                # Проверяем что описание не изменилось после извлечения жанров
+                                current_description = game.get('description', '')
+                                if current_description != old_description:
+                                    logger.error(f"Description changed during genre extraction for {game['title']}")
+                                    logger.error(f"Before: {old_description[:100]}...")
+                                    logger.error(f"After: {current_description[:100]}...")
+                                
                                 # Обновляем только жанры, сохраняя описание и другие поля
                                 await self.db.update_game_genres(game['id'], new_genres)
                                 updated_count += 1
