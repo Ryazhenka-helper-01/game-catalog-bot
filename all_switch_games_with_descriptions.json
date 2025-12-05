@@ -220,7 +220,7 @@
       "RPG"
     ],
     "found_genres": true,
-    "description": "Tales of Xillia Remastered — обновлённая версия ролевой игры, разработанной студией Bandai Namco Games. Ремастер вышел на Nintendo Switch в 2025 году и предлагает улучшенную графику, переработанный интерфейс и обновлённые элементы управления. Игра возвращает классическую историю о двух героях —",
+    "description": "Tales of Xillia Remastered — обновлённая версия классической JRPG Tales of Xillia, перенесённая на Nintendo Switch. Релиз состоялся 31 октября 2025 года. Игроков вновь ждёт история Джуда Матиса, студента-медика, и таинственной Миллы Максвелл, владеющей могущественными силами. Вместе им предстоит",
     "found_description": true
   },
   {
@@ -845,7 +845,7 @@
       "Roguelike"
     ],
     "found_genres": true,
-    "description": "Wizard of Legend — динамичный рогалик в мире фэнтези с видом сверху, разработанный студией Contingent99 и выпущенный на Nintendo Switch 15 мая 2018 года. Игра делает акцент на быстрой боевой системе, основанной на комбинировании заклинаний и умений, а также предлагает высокую реиграбельность",
+    "description": "Wizard of Legend — динамичный рогалик в мире фэнтези с видом сверху, созданный студией Contingent99 и выпущенный на Nintendo Switch 15 мая 2018 года. Игра делает упор на быструю боевую систему, в которой заклинания и умения можно комбинировать для создания мощных атак. Процедурная генерация уровней",
     "found_description": true
   },
   {
@@ -1218,8 +1218,8 @@
       "Экшен"
     ],
     "found_genres": true,
-    "description": "198X — это аркадная игра в ретро-стиле, разработанная Hi-Bit Studios и изданная компанией 8-4 для Nintendo Switch в 2020 году. Проект сочетает классические элементы аркадных автоматов 80-х, вдохновленные духом и эстетикой видеоигр того времени. 198X представляет собой динамичное путешествие через",
-    "found_description": true
+    "description": "",
+    "found_description": false
   },
   {
     "page": 8,
@@ -1230,8 +1230,8 @@
       "Run and Gun"
     ],
     "found_genres": true,
-    "description": "Huntdown — пиксельный сайд-скроллер в жанре ретро-экшена, разработанный студией Easy Trigger Games и изданный Coffee Stain Publishing для Nintendo Switch. В игре игроки берут на себя роль наёмников в мире, где власть пала, а улицы контролируют безжалостные банды. Арсенал оружия, динамичные",
-    "found_description": true
+    "description": "",
+    "found_description": false
   },
   {
     "page": 8,
@@ -2504,8 +2504,8 @@
       "Тактическая ролевая игра"
     ],
     "found_genres": true,
-    "description": "Metal Slug Tactics для Nintendo Switch — это тактическая игра в жанре пошаговой стратегии, вдохновленная классической серией Metal Slug от SNK. Игра представляет собой уникальную адаптацию популярного шутера, перенося его динамику в пошаговый формат с изометрическим видом и сохраняя фирменный стиль",
-    "found_description": true
+    "description": "",
+    "found_description": false
   },
   {
     "page": 16,
@@ -2982,8 +2982,8 @@
       "Hack and slash"
     ],
     "found_genres": true,
-    "description": "Devil May Cry 3: Special Edition (сокр. DMC3) для Nintendo Switch — это обновленная версия культового экшн-игры от компании Capcom, изначально выпущенной на PlayStation 2 в 2005 году. Эта версия, вышедшая на Nintendo Switch, предлагает игрокам улучшенный геймплей и новые возможности, делая",
-    "found_description": true
+    "description": "",
+    "found_description": false
   },
   {
     "page": 19,
@@ -2994,8 +2994,8 @@
       "Тактическая ролевая игра"
     ],
     "found_genres": true,
-    "description": "Unicorn Overlord Monarch Edition для Nintendo Switch — это захватывающая тактическая ролевая игра, разработанная студией Vanillaware и изданная компанией Sega. Выпущенная в 2024 году, игра быстро завоевала популярность среди поклонников жанра благодаря своему глубокому сюжету, великолепной графике",
-    "found_description": true
+    "description": "",
+    "found_description": false
   },
   {
     "page": 19,
@@ -3008,8 +3008,8 @@
       "Roguelike"
     ],
     "found_genres": true,
-    "description": "Teenage Mutant Ninja Turtles: Splintered Fate для Nintendo Switch — это увлекательная приключенческая игра в жанре roguelike, разработанная и изданная компанией Super Evil Megacorp. Игра быстро завоевала сердца фанатов серии и новых игроков благодаря своему динамичному геймплею и захватывающему",
-    "found_description": true
+    "description": "",
+    "found_description": false
   },
   {
     "page": 19,
