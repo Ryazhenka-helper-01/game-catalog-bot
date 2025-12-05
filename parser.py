@@ -433,7 +433,7 @@ class GameParser:
 
                         full_text = "\n\n".join(parts).strip()
                         if len(full_text) > 50:
-                            return full_text
+                            return clean_description(full_text)
         except Exception:
             pass
 
@@ -449,7 +449,7 @@ class GameParser:
                 parts = [clean_text(p.get_text()) for p in paragraphs if clean_text(p.get_text())]
                 full_text = "\n\n".join(parts).strip()
                 if len(full_text) > 50:
-                    return full_text
+                    return clean_description(full_text)
         except Exception:
             pass
 
@@ -465,7 +465,7 @@ class GameParser:
                 if elem:
                     text = clean_text(elem.get_text())
                     if len(text) > 50:
-                        return text
+                        return clean_description(text)
             except Exception:
                 continue
 
@@ -475,7 +475,7 @@ class GameParser:
             for p in paragraphs:
                 text = clean_text(p.get_text())
                 if len(text) > 50 and 'Nintendo Switch' not in text:
-                    return text
+                    return clean_description(text)
         except Exception:
             pass
 
@@ -485,7 +485,7 @@ class GameParser:
             if meta_desc and meta_desc.get('content'):
                 desc = clean_text(meta_desc['content'])
                 if len(desc) > 20:
-                    return desc
+                    return clean_description(desc)
         except Exception:
             pass
 
