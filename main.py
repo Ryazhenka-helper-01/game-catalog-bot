@@ -1371,6 +1371,76 @@ if __name__ == '__main__':
         print(f"🚀 Bot instance {bot_instance_id} starting...")
         print(f"🔒 Lock file created: {lock_file}")
         
+        # Автоматическое обновление описаний перед запуском бота
+        print("🔄 Auto-updating descriptions before bot start...")
+        try:
+            import asyncio
+            async def auto_update_descriptions():
+                games = await bot.db.get_all_games()
+                if not games:
+                    print("❌ No games found for auto-update")
+                    return
+                
+                print(f"📊 Found {len(games)} games for auto-update...")
+                updated_count = 0
+                failed_count = 0
+                
+                async with bot.parser:
+                    for i, game in enumerate(games):
+                        try:
+                            game_url = game.get('url')
+                            if not game_url or game_url == bot.parser.base_url:
+                                failed_count += 1
+                                continue
+                            
+                            # Загружаем страницу игры
+                            html = await bot.parser.get_page(game_url)
+                            if not html or html == "":
+                                failed_count += 1
+                                continue
+                            
+                            from bs4 import BeautifulSoup
+                            soup = BeautifulSoup(html, 'html.parser')
+                            
+                            # Извлекаем полное описание
+                            full_description = bot.parser._extract_description(soup)
+                            
+                            # Извлекаем жанры (сохраняем существующие если новые не найдены)
+                            new_genres = bot.parser._extract_genres_from_page(soup, game_url)
+                            genres = new_genres if new_genres else game.get('genres', [])
+                            
+                            # Извлекаем рейтинг (сохраняем существующий если новый не найден)
+                            new_rating = bot.parser._extract_rating(soup)
+                            rating = new_rating if new_rating else game.get('rating', 'N/A')
+                            
+                            # Обновляем игру в базе
+                            updated_game = {
+                                'description': full_description,
+                                'genres': genres,
+                                'rating': rating
+                            }
+                            
+                            await bot.db.update_game(game['id'], updated_game)
+                            updated_count += 1
+                            
+                            # Показываем прогресс каждые 50 игр
+                            if (i + 1) % 50 == 0:
+                                print(f"📈 Auto-update progress: {i+1}/{len(games)} games processed")
+                            
+                        except Exception as e:
+                            failed_count += 1
+                            print(f"❌ Error updating game {game.get('title', 'Unknown')}: {e}")
+                            continue
+                
+                print(f"✅ Auto-update completed: {updated_count} updated, {failed_count} failed")
+            
+            # Запускаем автообновление
+            asyncio.get_event_loop().run_until_complete(auto_update_descriptions())
+            
+        except Exception as e:
+            print(f"❌ Auto-update failed: {e}")
+            print("🚀 Starting bot anyway...")
+        
         try:
             bot.run()
         finally:
