@@ -585,6 +585,29 @@ class GameTrackerBot:
         genre = ' '.join(context.args)
         await self.search_games_by_genre(update, genre)
     
+    async def reload_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Перезагрузить данные из базы"""
+        try:
+            await update.message.reply_text("Перезагружаю данные из базы...")
+            
+            # Очищаем кэш и перезагружаем
+            all_games = await self.db.get_all_games()
+            genres = await self.db.get_all_genres()
+            
+            await update.message.reply_text(
+                f"✅ Данные перезагружены!\n\n"
+                f"Всего игр: {len(all_games)}\n"
+                f"Жанров: {len(genres)}\n"
+                f"Игр с описаниями: {sum(1 for g in all_games if g.get('description'))}"
+            )
+            logger.info(f"User {update.effective_user.id} reloaded data")
+        except Exception as e:
+            logger.error(f"Error in reload_command: {e}")
+            await safe_execute(
+                update.message.reply_text,
+                "❌ Ошибка при перезагрузке данных."
+            )
+    
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показать помощь"""
         try:
@@ -598,7 +621,8 @@ class GameTrackerBot:
                 "/search [жанр] - поиск игр по жанру, можно писать жанр просто текстом (например: Экшен, RPG).\n"
                 "/stats - статистика по базе игр и жанрам.\n"
                 "/update_genres - админ-команда: обновить жанры для всех игр с сайта.\n"
-                "/update_descriptions - админ-команда: обновить полные описания для всех игр с сайта.\n\n"
+                "/update_descriptions - админ-команда: обновить полные описания для всех игр с сайта.\n"
+                "/reload - перезагрузить данные из базы (если описания не отображаются).\n\n"
                 "Как использовать бота:\n"
                 "• В личке, группах и супергруппах можете писать жанр текстом или вызывать команды через слэш.\n"
                 "• В каналах бот отвечает на команды администратора, отправленные как сообщения канала.\n"
@@ -1104,6 +1128,7 @@ class GameTrackerBot:
         application.add_handler(CommandHandler("search", self.search_command))
         application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("stats", self.stats_command))
+        application.add_handler(CommandHandler("reload", self.reload_command))
         
         # Добавление админских команд
         admin_handlers = self.admin_commands.get_handlers()
@@ -1127,6 +1152,7 @@ class GameTrackerBot:
                 BotCommand("games", "Показать все игры"),
                 BotCommand("search", "Поиск игр по жанру"),
                 BotCommand("stats", "Статистика по играм и жанрам"),
+                BotCommand("reload", "Перезагрузить данные из базы"),
             ]
             await application.bot.set_my_commands(commands)
             
